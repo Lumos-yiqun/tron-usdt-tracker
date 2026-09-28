@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0b1426" />
+    <meta name="description" content="查看 TRON-USDT 地址流水与月度转账手续费。" />
+    <title>TRON USDT 记账本</title>
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%230b1426'/%3E%3Cpath d='M16 18h32M16 31h32M16 44h21' stroke='%2347dec0' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="./styles.css" />
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand" aria-label="TRON USDT 记账本">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span>USDT <strong>记账本</strong></span>
+        </div>
+        <div class="topbar-right">
+          <span class="network-pill"><i></i>TRON 主网</span>
+          <button id="walletButton" class="wallet-button" type="button">连接 TronLink</button>
+        </div>
+      </header>
+
+      <main class="main">
+        <section class="page-heading">
+          <div>
+            <div class="eyebrow">TRON · USDT</div>
+            <h1>账本概览</h1>
+            <p>看清每月的 USDT 流向和转账成本。</p>
+          </div>
+          <div class="month-control">
+            <label for="monthSelect">统计月份</label>
+            <select id="monthSelect" aria-label="统计月份"></select>
+          </div>
+        </section>
+
+        <section class="address-panel" aria-labelledby="addressTitle">
+          <div class="address-panel-copy">
+            <span class="panel-icon" aria-hidden="true">⌁</span>
+            <div>
+              <h2 id="addressTitle">选择要查看的地址</h2>
+              <p id="addressDescription">连接 TronLink，或粘贴地址只读查看公开链上记录。</p>
+            </div>
+          </div>
+          <form id="addressForm" class="address-form">
+            <label class="sr-only" for="addressInput">TRON 地址</label>
+            <input id="addressInput" name="address" type="text" placeholder="粘贴 T 开头的 TRON 地址" autocomplete="off" spellcheck="false" />
+            <button type="submit">查看账本</button>
+          </form>
+        </section>
+
+        <div id="message" class="message" role="status" aria-live="polite" hidden></div>
+
+        <section class="summary-grid" aria-label="月度概览">
+          <article class="summary-card in-card">
+            <div class="card-top"><span>本月转入</span><span class="mini-icon in" aria-hidden="true">↙</span></div>
+            <div class="metric"><span id="inValue">—</span><small>USDT</small></div>
+            <p id="inCount">等待选择地址</p>
+          </article>
+          <article class="summary-card out-card">
+            <div class="card-top"><span>本月转出</span><span class="mini-icon out" aria-hidden="true">↗</span></div>
+            <div class="metric"><span id="outValue">—</span><small>USDT</small></div>
+            <p id="outCount">等待选择地址</p>
+          </article>
+          <article class="summary-card fee-card">
+            <div class="card-top"><span>本月实际手续费</span><span class="mini-icon fee" aria-hidden="true">◇</span></div>
+            <div class="metric"><span id="feeValue">—</span><small>TRX</small></div>
+            <p id="feeSubtitle">仅统计该地址发起的转出交易</p>
+          </article>
+        </section>
+
+        <section class="content-grid">
+          <article class="surface report-surface" aria-labelledby="reportTitle">
+            <div class="section-title-row">
+              <div><span class="section-kicker">月度报告</span><h2 id="reportTitle">手续费分析</h2></div>
+              <span id="reportStatus" class="subtle-tag">等待数据</span>
+            </div>
+            <div class="report-total">
+              <div><span class="report-label">实际燃烧的 TRX</span><strong id="reportFee">—</strong></div>
+            </div>
+            <div class="report-stats">
+              <div><span>转出交易</span><strong id="reportTxCount">—</strong></div>
+              <div><span>平均每笔</span><strong id="reportAverage">—</strong></div>
+              <div><span>消耗 Energy</span><strong id="reportEnergy">—</strong></div>
+            </div>
+            <p class="report-note" id="reportNote">连接地址后，按交易回执核算实际手续费。使用已有 Energy 的部分不会计为 TRX 支出。</p>
+          </article>
+
+          <article class="surface trend-surface" aria-labelledby="trendTitle">
+            <div class="section-title-row">
+              <div><span class="section-kicker">最近 6 个月</span><h2 id="trendTitle">收支趋势</h2></div>
+              <div class="legend"><span><i class="legend-in"></i>转入</span><span><i class="legend-out"></i>转出</span></div>
+            </div>
+            <div id="trendChart" class="trend-chart empty-chart" aria-label="最近六个月 USDT 收支趋势">
+              <div class="chart-empty">选择地址后查看趋势</div>
+            </div>
+          </article>
+        </section>
+
+        <section class="surface ledger-surface" aria-labelledby="ledgerTitle">
+          <div class="section-title-row ledger-head">
+            <div><span class="section-kicker">链上记录</span><h2 id="ledgerTitle">本月流水</h2></div>
+            <span id="ledgerCount" class="subtle-tag">0 笔</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>交易</th><th>对方地址</th><th>时间</th><th class="num">金额</th><th class="num">手续费</th></tr></thead>
+              <tbody id="ledgerBody"><tr><td colspan="5" class="table-empty">连接钱包或输入地址后查看流水</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+        <footer>数据来自 TRON 主网公开记录。手续费以交易回执为准；转入交易的手续费不计入本地址支出。</footer>
+      </main>
+    </div>
+  </body>
+</html>

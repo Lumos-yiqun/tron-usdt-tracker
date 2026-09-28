@@ -1,0 +1,323 @@
+const API = "https://api.trongrid.io";
+const USDT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const MAINNET = "0x2b6653dc";
+const state = { address: "", addressHex: "", transfers: [], fees: new Map(), loading: false, truncated: false, walletProvider: null, walletAddress: "", requestId: 0 };
+const el = (id) => document.getElementById(id);
+const formatUSDT = (value) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
+const formatTRX = (value) => new Intl.NumberFormat("zh-CN", { minimumFractionDigits: value > 0 && value < 0.01 ? 4 : 2, maximumFractionDigits: 4 }).format(value);
+const formatInteger = (value) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 }).format(value);
+const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+const short = (address) => `${address.slice(0, 6)}…${address.slice(-6)}`;
+const escapeHTML = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+
+function showMessage(message, error = false) {
+  const node = el("message");
+  node.textContent = message;
+  node.classList.toggle("error", error);
+  node.hidden = !message;
+}
+
+function clearReport() {
+  for (const id of ["inValue", "outValue", "feeValue", "reportFee", "reportTxCount", "reportAverage", "reportEnergy"]) el(id).textContent = "—";
+  el("inCount").textContent = "正在同步";
+  el("outCount").textContent = "正在同步";
+  el("feeSubtitle").textContent = "等待交易回执";
+  el("reportStatus").textContent = "等待数据";
+  el("reportNote").textContent = "手续费以交易回执为准；未查到回执的交易不会按 0 计算。";
+  el("ledgerCount").textContent = "0 笔";
+  el("ledgerBody").innerHTML = '<tr><td colspan="5" class="table-empty">正在同步链上流水…</td></tr>';
+  el("trendChart").classList.add("empty-chart");
+  el("trendChart").innerHTML = '<div class="chart-empty">正在同步链上流水…</div>';
+}
+
+function buildMonths() {
+  const select = el("monthSelect");
+  const now = new Date();
+  for (let offset = 0; offset < 12; offset++) {
+    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const option = document.createElement("option");
+    option.value = monthKey(date);
+    option.textContent = `${date.getFullYear()} 年 ${date.getMonth() + 1} 月`;
+    select.append(option);
+  }
+}
+
+async function decodeAddress(address) {
+  if (!/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(address)) throw new Error("请输入有效的 TRON 地址（T 开头，共 34 位）。");
+  let number = 0n;
+  for (const char of address) number = number * 58n + BigInt(ALPHABET.indexOf(char));
+  const bytes = new Uint8Array(25);
+  for (let i = 24; i >= 0; i--) { bytes[i] = Number(number & 255n); number >>= 8n; }
+  if (number !== 0n || bytes[0] !== 0x41) throw new Error("TRON 地址格式不正确。");
+  const first = await crypto.subtle.digest("SHA-256", bytes.slice(0, 21));
+  const second = new Uint8Array(await crypto.subtle.digest("SHA-256", first));
+  if (!bytes.slice(21).every((byte, index) => byte === second[index])) throw new Error("TRON 地址校验失败，请检查是否复制完整。");
+  return Array.from(bytes.slice(0, 21), (byte) => byte.toString(16).padStart(2, "0")).join("").toLowerCase();
+}
+
+async function apiGet(path) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetch(`${API}${path}`, { headers: { accept: "application/json" } });
+    if (response.status === 429 && attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+      continue;
+    }
+    if (!response.ok) throw new Error(response.status === 429 ? "链上查询过于频繁，请稍后重试。" : "链上数据暂时无法获取，请稍后重试。");
+    const data = await response.json();
+    if (data.success === false) throw new Error("链上数据暂时无法获取，请稍后重试。");
+    return data;
+  }
+}
+
+async function apiPost(path, value) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const response = await fetch(`${API}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ value }) });
+    if (response.status === 429 && attempt < 2) {
+      await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
+      continue;
+    }
+    if (!response.ok) throw new Error("交易回执暂时无法获取。");
+    return response.json();
+  }
+}
+
+async function fetchTransfers(address) {
+  const earliest = new Date();
+  earliest.setMonth(earliest.getMonth() - 16, 1);
+  earliest.setHours(0, 0, 0, 0);
+  let fingerprint = "";
+  const transfers = [];
+  let truncated = false;
+  for (let page = 0; page < 4; page++) {
+    const params = new URLSearchParams({ only_confirmed: "true", limit: "200", contract_address: USDT });
+    if (fingerprint) params.set("fingerprint", fingerprint);
+    const result = await apiGet(`/v1/accounts/${encodeURIComponent(address)}/transactions/trc20?${params}`);
+    const rows = Array.isArray(result.data) ? result.data : [];
+    for (const row of rows) {
+      if (row.type !== "Transfer" || row.token_info?.address !== USDT) continue;
+      if (row.block_timestamp >= earliest.getTime()) transfers.push(row);
+    }
+    if (rows.length < 200 || !result.meta?.fingerprint || (rows.length && rows[rows.length - 1].block_timestamp < earliest.getTime())) break;
+    if (page === 3) truncated = true;
+    fingerprint = result.meta.fingerprint;
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  return { transfers, truncated };
+}
+
+function monthTransfers() {
+  const selected = el("monthSelect").value;
+  return state.transfers.filter((row) => monthKey(new Date(row.block_timestamp)) === selected);
+}
+
+function selectedMonthIncomplete() {
+  if (!state.truncated || !state.transfers.length) return false;
+  const oldest = Math.min(...state.transfers.map((row) => row.block_timestamp));
+  return el("monthSelect").value <= monthKey(new Date(oldest));
+}
+
+function renderSummary() {
+  const rows = monthTransfers();
+  const incoming = rows.filter((row) => row.to === state.address && row.from !== state.address);
+  const outgoing = rows.filter((row) => row.from === state.address);
+  const sum = (items) => items.reduce((total, row) => total + Number(row.value) / 1e6, 0);
+  const incomplete = selectedMonthIncomplete();
+  el("inValue").textContent = incomplete && !incoming.length ? "—" : `${formatUSDT(sum(incoming))}${incomplete ? "+" : ""}`;
+  el("outValue").textContent = incomplete && !outgoing.length ? "—" : `${formatUSDT(sum(outgoing))}${incomplete ? "+" : ""}`;
+  el("inCount").textContent = `${incoming.length}${incomplete ? "+" : ""} 笔转入${incomplete ? " · 数据不完整" : ""}`;
+  el("outCount").textContent = `${outgoing.length}${incomplete ? "+" : ""} 笔转出${incomplete ? " · 数据不完整" : ""}`;
+  el("ledgerCount").textContent = `${rows.length} 笔`;
+  renderTrend();
+  renderLedger(rows);
+}
+
+function renderTrend() {
+  if (state.truncated) {
+    el("trendChart").classList.add("empty-chart");
+    el("trendChart").innerHTML = '<div class="chart-empty">该地址交易较多，趋势数据不完整</div>';
+    return;
+  }
+  const selected = el("monthSelect").value;
+  const [year, month] = selected.split("-").map(Number);
+  const months = Array.from({ length: 6 }, (_, index) => new Date(year, month - 6 + index, 1));
+  const totals = months.map((date) => {
+    const rows = state.transfers.filter((row) => monthKey(new Date(row.block_timestamp)) === monthKey(date));
+    return { date, incoming: rows.filter((row) => row.to === state.address && row.from !== state.address).reduce((n, row) => n + Number(row.value) / 1e6, 0), outgoing: rows.filter((row) => row.from === state.address).reduce((n, row) => n + Number(row.value) / 1e6, 0) };
+  });
+  const max = Math.max(1, ...totals.flatMap((item) => [item.incoming, item.outgoing]));
+  const chart = el("trendChart");
+  chart.classList.remove("empty-chart");
+  chart.innerHTML = totals.map((item) => `<div class="chart-group"><div class="chart-bars"><span class="chart-bar in" style="height:${Math.max(2, item.incoming / max * 100)}%" title="转入 ${formatUSDT(item.incoming)} USDT"></span><span class="chart-bar out" style="height:${Math.max(2, item.outgoing / max * 100)}%" title="转出 ${formatUSDT(item.outgoing)} USDT"></span></div><span class="chart-month">${item.date.getMonth() + 1} 月</span></div>`).join("");
+  chart.setAttribute("aria-label", `最近六个月 USDT 收支趋势。${totals.map((item) => `${item.date.getMonth() + 1} 月转入 ${formatUSDT(item.incoming)}，转出 ${formatUSDT(item.outgoing)}`).join("；")}`);
+}
+
+function renderLedger(rows) {
+  const body = el("ledgerBody");
+  if (!rows.length) { body.innerHTML = '<tr><td colspan="5" class="table-empty">这个月还没有 USDT 转账记录</td></tr>'; return; }
+  const seenFees = new Set();
+  body.innerHTML = rows.slice().sort((a, b) => b.block_timestamp - a.block_timestamp).map((row) => {
+    const outgoing = row.from === state.address;
+    const counterparty = outgoing ? row.to : row.from;
+    const amount = Number(row.value) / 1e6;
+    const fee = state.fees.get(row.transaction_id);
+    let feeText = "—";
+    if (outgoing && fee && !seenFees.has(row.transaction_id)) {
+      feeText = fee.paidByAddress ? `${formatTRX(fee.trx)} TRX` : "他人支付";
+      seenFees.add(row.transaction_id);
+    } else if (outgoing && seenFees.has(row.transaction_id)) feeText = "同笔交易";
+    const id = /^[0-9a-fA-F]{64}$/.test(row.transaction_id) ? row.transaction_id : "";
+    const date = new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(row.block_timestamp));
+    return `<tr><td><span class="tx-kind"><span class="tx-dot ${outgoing ? "out" : "in"}">${outgoing ? "↗" : "↙"}</span><a href="https://tronscan.org/#/transaction/${id}" target="_blank" rel="noopener noreferrer">${outgoing ? "转出" : "转入"}</a></span></td><td class="address-cell" title="${escapeHTML(counterparty)}">${escapeHTML(short(counterparty))}</td><td>${date}</td><td class="num ${outgoing ? "amount-out" : "amount-in"}">${outgoing ? "−" : "+"}${formatUSDT(amount)}</td><td class="num">${feeText}</td></tr>`;
+  }).join("");
+}
+
+async function feeForTransaction(txId) {
+  const info = await apiPost("/wallet/gettransactioninfobyid", txId);
+  const tx = await apiPost("/wallet/gettransactionbyid", txId);
+  if (!info?.id || !tx?.txID) throw new Error("交易回执缺失");
+  const owner = String(tx.raw_data?.contract?.[0]?.parameter?.value?.owner_address || "").toLowerCase();
+  if (!owner) throw new Error("无法确认手续费支付方");
+  return { paidByAddress: owner === state.addressHex, trx: owner === state.addressHex ? Number(info.fee || 0) / 1e6 : 0, energy: owner === state.addressHex ? Number(info.receipt?.energy_usage_total || 0) : 0 };
+}
+
+async function loadFees(requestId) {
+  const outgoing = monthTransfers().filter((row) => row.from === state.address);
+  const ids = [...new Set(outgoing.map((row) => row.transaction_id))];
+  if (!ids.length) { renderReport([], 0, 0); return; }
+  el("reportStatus").textContent = "核算中";
+  el("feeValue").textContent = "…";
+  el("reportFee").textContent = "…";
+  const selectedIds = ids.slice(0, 120);
+  let cursor = 0;
+  const workers = Array.from({ length: Math.min(2, selectedIds.length) }, async () => {
+    while (cursor < selectedIds.length) {
+      const id = selectedIds[cursor++];
+      if (state.fees.has(id)) continue;
+      try {
+        const fee = await feeForTransaction(id);
+        if (requestId !== state.requestId) return;
+        state.fees.set(id, fee);
+      } catch { /* Keep the fee unknown; retry once after the first pass. */ }
+    }
+  });
+  await Promise.all(workers);
+  if (requestId !== state.requestId) return;
+  for (const id of selectedIds.filter((id) => !state.fees.has(id))) {
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    try { state.fees.set(id, await feeForTransaction(id)); } catch { /* Show an incomplete report below. */ }
+    if (requestId !== state.requestId) return;
+  }
+  const failed = selectedIds.filter((id) => !state.fees.has(id)).length;
+  renderReport(ids, failed, Math.max(0, ids.length - selectedIds.length));
+  renderLedger(monthTransfers());
+}
+
+function renderReport(ids, failed, omitted) {
+  const known = ids.map((id) => state.fees.get(id)).filter(Boolean);
+  const total = known.reduce((sum, item) => sum + item.trx, 0);
+  const energy = known.reduce((sum, item) => sum + item.energy, 0);
+  const unresolved = failed + omitted;
+  const incomplete = selectedMonthIncomplete();
+  el("feeValue").textContent = unresolved || incomplete ? `${formatTRX(total)}+` : formatTRX(total);
+  el("reportFee").textContent = unresolved || incomplete ? `${formatTRX(total)}+` : formatTRX(total);
+  el("reportTxCount").textContent = `${ids.length}${incomplete ? "+" : ""} 笔`;
+  el("reportAverage").textContent = known.length ? `${formatTRX(total / known.length)} TRX` : "—";
+  el("reportEnergy").textContent = known.length ? formatInteger(energy) : "—";
+  el("reportStatus").textContent = unresolved || incomplete ? "部分数据" : "已核算";
+  el("feeSubtitle").textContent = unresolved ? `${unresolved} 笔费用尚未核实` : `${ids.length} 笔转出交易已核算${incomplete ? " · 流水不完整" : ""}`;
+  el("reportNote").textContent = unresolved || incomplete
+    ? `有 ${unresolved} 笔费用未取得回执${incomplete ? "，且该月流水未全部载入" : ""}；当前金额仅为已核实部分。`
+    : "实际手续费为该地址发起交易所燃烧的 TRX。使用已有或受委托 Energy 时，仍会记录资源消耗，但不计为 TRX 支出。";
+}
+
+async function viewAddress(address, fromWallet = false) {
+  const trimmed = address.trim();
+  const hex = await decodeAddress(trimmed);
+  const requestId = ++state.requestId;
+  state.address = trimmed;
+  state.addressHex = hex;
+  state.transfers = [];
+  state.fees = new Map();
+  state.loading = true;
+  clearReport();
+  el("addressInput").value = trimmed;
+  el("addressTitle").textContent = short(trimmed);
+  el("addressDescription").textContent = fromWallet ? "已连接 TronLink · 只读查看账本，不会请求转账签名" : "只读地址 · 数据来自 TRON 主网";
+  showMessage("正在同步链上流水，请稍候…");
+  try {
+    const result = await fetchTransfers(trimmed);
+    if (requestId !== state.requestId) return;
+    state.transfers = result.transfers;
+    state.truncated = result.truncated;
+    state.loading = false;
+    renderSummary();
+    showMessage(result.truncated ? "该地址交易较多，仅载入最近 800 笔。较早月份的统计可能不完整。" : "");
+    await loadFees(requestId);
+  } catch (error) {
+    if (requestId !== state.requestId) return;
+    state.loading = false;
+    el("ledgerBody").innerHTML = '<tr><td colspan="5" class="table-empty">链上数据暂时无法获取，请稍后重试</td></tr>';
+    showMessage(error.message || "加载失败，请稍后重试。", true);
+    throw error;
+  }
+}
+
+function discoverWallet() {
+  if (state.walletProvider) return state.walletProvider;
+  if (window.tron?.request) state.walletProvider = window.tron;
+  window.dispatchEvent(new Event("TIP6963:requestProvider"));
+  return state.walletProvider;
+}
+
+async function connectWallet() {
+  let provider = discoverWallet();
+  if (!provider) {
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    provider = discoverWallet();
+  }
+  if (!provider) {
+    showMessage("未检测到 TronLink。请在 TronLink 浏览器中打开，或粘贴地址只读查看。", true);
+    return;
+  }
+  try {
+    const accounts = await provider.request({ method: "eth_requestAccounts" });
+    const address = accounts?.[0] || provider.tronWeb?.defaultAddress?.base58;
+    if (!address) throw new Error("钱包未返回地址，请解锁后重试。");
+    const host = String(provider.tronWeb?.fullNode?.host || "").toLowerCase();
+    if (/shasta|nile/.test(host)) throw new Error("请先在 TronLink 中切换到 TRON 主网。");
+    state.walletAddress = address;
+    el("walletButton").textContent = `已连接 ${short(address)}`;
+    await viewAddress(address, true);
+  } catch (error) {
+    showMessage(error?.code === 4001 ? "你已取消连接钱包。仍可粘贴地址只读查看。" : (error.message || "钱包连接失败，请重试。"), true);
+  }
+}
+
+function registerWebMCP() {
+  const context = document.modelContext;
+  if (!context?.registerTool) return;
+  const tools = [
+    { name: "view_tron_usdt_address", title: "查看 TRON USDT 账本", description: "按 TRON 主网地址加载 USDT 账本和当前月份手续费报告。只读取公开链上数据。", inputSchema: { type: "object", properties: { address: { type: "string" } }, required: ["address"], additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true }, async execute(input) { if (!input || typeof input.address !== "string") throw new Error("需要 TRON 地址"); await viewAddress(input.address); return { address: state.address, month: el("monthSelect").value, transfers: monthTransfers().length }; } },
+    { name: "select_ledger_month", title: "选择账本月份", description: "在已加载的账本中选择近 12 个月的一个月份，并更新月度报告。", inputSchema: { type: "object", properties: { month: { type: "string", pattern: "^[0-9]{4}-(0[1-9]|1[0-2])$" } }, required: ["month"], additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: false }, async execute(input) { if (!state.address) throw new Error("请先选择地址"); if (!input || ![...el("monthSelect").options].some((option) => option.value === input.month)) throw new Error("月份不在可选范围内"); el("monthSelect").value = input.month; const requestId = ++state.requestId; renderSummary(); await loadFees(requestId); return { address: state.address, month: input.month, transfers: monthTransfers().length, feeTRX: el("reportFee").textContent }; } }
+  ];
+  for (const tool of tools) Promise.resolve(context.registerTool(tool)).catch(() => {});
+}
+
+window.addEventListener("TIP6963:announceProvider", (event) => {
+  if (event.detail?.info?.rdns === "org.tronlink.www" || event.detail?.info?.name === "TronLink") state.walletProvider = event.detail.provider;
+});
+buildMonths();
+discoverWallet();
+registerWebMCP();
+el("walletButton").addEventListener("click", connectWallet);
+el("addressForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try { await viewAddress(el("addressInput").value); } catch (error) { showMessage(error.message || "地址查询失败。", true); }
+});
+el("monthSelect").addEventListener("change", async () => {
+  if (!state.address || state.loading) return;
+  const requestId = ++state.requestId;
+  renderSummary();
+  await loadFees(requestId);
+});
