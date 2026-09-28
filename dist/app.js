@@ -174,11 +174,15 @@ function renderLedger(rows) {
 
 async function feeForTransaction(txId) {
   const info = await apiPost("/wallet/gettransactioninfobyid", txId);
+  if (!info?.id) throw new Error("交易回执缺失");
+  const actualFee = Number(info.fee || 0) / 1e6;
+  const energy = Number(info.receipt?.energy_usage_total || 0);
+  if (actualFee === 0) return { paidByAddress: true, trx: 0, energy };
   const tx = await apiPost("/wallet/gettransactionbyid", txId);
-  if (!info?.id || !tx?.txID) throw new Error("交易回执缺失");
+  if (!tx?.txID) throw new Error("交易详情缺失");
   const owner = String(tx.raw_data?.contract?.[0]?.parameter?.value?.owner_address || "").toLowerCase();
   if (!owner) throw new Error("无法确认手续费支付方");
-  return { paidByAddress: owner === state.addressHex, trx: owner === state.addressHex ? Number(info.fee || 0) / 1e6 : 0, energy: owner === state.addressHex ? Number(info.receipt?.energy_usage_total || 0) : 0 };
+  return { paidByAddress: owner === state.addressHex, trx: owner === state.addressHex ? actualFee : 0, energy };
 }
 
 async function loadFees(requestId) {
