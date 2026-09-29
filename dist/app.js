@@ -22,9 +22,9 @@ function clearReport() {
   for (const id of ["inValue", "outValue", "feeValue", "reportFee", "reportTxCount", "reportAverage", "reportEnergy"]) el(id).textContent = "—";
   el("inCount").textContent = "正在同步";
   el("outCount").textContent = "正在同步";
-  el("feeSubtitle").textContent = "等待交易回执";
+  el("feeSubtitle").textContent = "等待链上执行数据";
   el("reportStatus").textContent = "等待数据";
-  el("reportNote").textContent = "手续费以交易回执为准；未查到回执的交易不会按 0 计算。";
+  el("reportNote").textContent = "手续费以链上执行数据为准；无法核实的交易不会按 0 计算。";
   el("ledgerCount").textContent = "0 笔";
   el("ledgerBody").innerHTML = '<tr><td colspan="5" class="table-empty">正在同步链上流水…</td></tr>';
   el("trendChart").classList.add("empty-chart");
@@ -177,12 +177,29 @@ async function feeForTransaction(txId) {
   if (!info?.id) throw new Error("交易回执缺失");
   const actualFee = Number(info.fee || 0) / 1e6;
   const energy = Number(info.receipt?.energy_usage_total || 0);
-  if (actualFee === 0) return { paidByAddress: true, trx: 0, energy };
   const tx = await apiPost("/wallet/gettransactionbyid", txId);
   if (!tx?.txID) throw new Error("交易详情缺失");
   const owner = String(tx.raw_data?.contract?.[0]?.parameter?.value?.owner_address || "").toLowerCase();
   if (!owner) throw new Error("无法确认手续费支付方");
   return { paidByAddress: owner === state.addressHex, trx: owner === state.addressHex ? actualFee : 0, energy };
+}
+
+async function fetchOutgoingTransactions(address, month) {
+  const [year, monthNumber] = month.split("-").map(Number);
+  const start = new Date(year, monthNumber - 1, 1).getTime();
+  const end = new Date(year, monthNumber, 1).getTime() - 1;
+  const transactions = new Map();
+  let fingerprint = "";
+  for (let page = 0; page < 4; page++) {
+    const params = new URLSearchParams({ only_confirmed: "true", only_from: "true", limit: "200", min_timestamp: String(start), max_timestamp: String(end) });
+    if (fingerprint) params.set("fingerprint", fingerprint);
+    const result = await apiGet(`/v1/accounts/${encodeURIComponent(address)}/transactions?${params}`);
+    const rows = Array.isArray(result.data) ? result.data : [];
+    for (const row of rows) if (row.txID) transactions.set(row.txID, row);
+    if (rows.length < 200 || !result.meta?.fingerprint) return { transactions, complete: true };
+    fingerprint = result.meta.fingerprint;
+  }
+  return { transactions, complete: false };
 }
 
 async function loadFees(requestId) {
@@ -193,13 +210,56 @@ async function loadFees(requestId) {
   el("feeValue").textContent = "…";
   el("reportFee").textContent = "…";
   const selectedIds = ids.slice(0, 120);
+  const omitted = Math.max(0, ids.length - selectedIds.length);
+  if (selectedIds.every((id) => state.fees.has(id) && state.fees.get(id).energy !== null)) {
+    renderReport(ids, 0, omitted);
+    renderLedger(monthTransfers());
+    return;
+  }
+  try {
+    const { transactions, complete } = await fetchOutgoingTransactions(state.address, el("monthSelect").value);
+    if (requestId !== state.requestId) return;
+    for (const id of selectedIds) {
+      const tx = transactions.get(id);
+      if (!tx && complete) {
+        state.fees.set(id, { paidByAddress: false, trx: 0, energy: 0 });
+        continue;
+      }
+      const fee = Number(tx?.ret?.[0]?.fee);
+      const energy = Number(tx?.energy_usage_total);
+      const owner = String(tx?.raw_data?.contract?.[0]?.parameter?.value?.owner_address || "").toLowerCase();
+      if (tx && Number.isFinite(fee) && fee >= 0 && owner === state.addressHex) {
+        state.fees.set(id, { paidByAddress: true, trx: fee / 1e6, energy: Number.isFinite(energy) && tx.energy_usage_total != null ? energy : null });
+      }
+    }
+    const pending = selectedIds.filter((id) => !state.fees.has(id) || state.fees.get(id).energy === null);
+    renderReport(ids, selectedIds.filter((id) => !state.fees.has(id)).length, omitted, pending.length > 0);
+    renderLedger(monthTransfers());
+    if (!pending.length) return;
+  } catch {
+    if (requestId !== state.requestId) return;
+    el("feeSubtitle").textContent = "批量查询不可用，正在逐笔核算";
+  }
+  // The account transaction list contains fees and Energy. Query receipts only
+  // when a batch entry is missing or lacks the fields needed for this report.
+  void hydrateReceipts(ids, selectedIds, omitted, requestId);
+}
+
+async function hydrateReceipts(ids, selectedIds, omitted, requestId) {
+  const pendingIds = selectedIds.filter((id) => !state.fees.has(id) || state.fees.get(id).energy === null);
   let cursor = 0;
-  const workers = Array.from({ length: Math.min(2, selectedIds.length) }, async () => {
-    while (cursor < selectedIds.length) {
-      const id = selectedIds[cursor++];
-      if (state.fees.has(id)) continue;
+  const workers = Array.from({ length: Math.min(2, pendingIds.length) }, async () => {
+    while (cursor < pendingIds.length) {
+      const id = pendingIds[cursor++];
       try {
-        const fee = await feeForTransaction(id);
+        const current = state.fees.get(id);
+        let fee;
+        if (current) {
+          if (current.energy !== null) continue;
+          const info = await apiPost("/wallet/gettransactioninfobyid", id);
+          if (info?.id !== id) throw new Error("交易回执缺失");
+          fee = { ...current, energy: Number(info.receipt?.energy_usage_total || 0) };
+        } else fee = await feeForTransaction(id);
         if (requestId !== state.requestId) return;
         state.fees.set(id, fee);
       } catch { /* Keep the fee unknown; retry once after the first pass. */ }
@@ -213,25 +273,28 @@ async function loadFees(requestId) {
     if (requestId !== state.requestId) return;
   }
   const failed = selectedIds.filter((id) => !state.fees.has(id)).length;
-  renderReport(ids, failed, Math.max(0, ids.length - selectedIds.length));
+  renderReport(ids, failed, omitted);
   renderLedger(monthTransfers());
 }
 
-function renderReport(ids, failed, omitted) {
+function renderReport(ids, failed, omitted, energyLoading = false) {
   const known = ids.map((id) => state.fees.get(id)).filter(Boolean);
   const total = known.reduce((sum, item) => sum + item.trx, 0);
-  const energy = known.reduce((sum, item) => sum + item.energy, 0);
+  const knownEnergy = known.filter((item) => item.energy !== null);
+  const energy = knownEnergy.reduce((sum, item) => sum + item.energy, 0);
   const unresolved = failed + omitted;
   const incomplete = selectedMonthIncomplete();
   el("feeValue").textContent = unresolved || incomplete ? `${formatTRX(total)}+` : formatTRX(total);
   el("reportFee").textContent = unresolved || incomplete ? `${formatTRX(total)}+` : formatTRX(total);
   el("reportTxCount").textContent = `${ids.length}${incomplete ? "+" : ""} 笔`;
   el("reportAverage").textContent = known.length ? `${formatTRX(total / known.length)} TRX` : "—";
-  el("reportEnergy").textContent = known.length ? formatInteger(energy) : "—";
-  el("reportStatus").textContent = unresolved || incomplete ? "部分数据" : "已核算";
-  el("feeSubtitle").textContent = unresolved ? `${unresolved} 笔费用尚未核实` : `${ids.length} 笔转出交易已核算${incomplete ? " · 流水不完整" : ""}`;
+  el("reportEnergy").textContent = knownEnergy.length ? `${formatInteger(energy)}${knownEnergy.length < known.length ? "+" : ""}` : energyLoading ? "同步中" : "—";
+  el("reportStatus").textContent = unresolved || incomplete ? "部分数据" : knownEnergy.length < known.length ? "费用已核算" : "已核算";
+  el("feeSubtitle").textContent = unresolved ? `${unresolved} 笔费用尚未核实` : `${ids.length} 笔转出交易费用已核算${incomplete ? " · 流水不完整" : ""}`;
   el("reportNote").textContent = unresolved || incomplete
-    ? `有 ${unresolved} 笔费用未取得回执${incomplete ? "，且该月流水未全部载入" : ""}；当前金额仅为已核实部分。`
+    ? `${unresolved ? `有 ${unresolved} 笔费用未取得链上执行数据` : ""}${unresolved && incomplete ? "，且" : ""}${incomplete ? "该月流水未全部载入" : ""}；当前金额仅为已核实部分。`
+    : knownEnergy.length < known.length
+      ? `手续费已按地址交易记录核算；Energy ${energyLoading ? "正在后台同步" : "仅取得部分回执"}。`
     : "实际手续费为该地址发起交易所燃烧的 TRX。使用已有或受委托 Energy 时，仍会记录资源消耗，但不计为 TRX 支出。";
 }
 
