@@ -2,6 +2,8 @@
 
 一个只读的 TRON-USDT 转账追踪工具。支持连接 TronLink，或输入地址查看公开链上流水、月度收支和手续费报告。页面适配桌面与移动端。
 
+在线访问：[tron-usdt-tracker.vercel.app](https://tron-usdt-tracker.vercel.app/)。
+
 ## 本地运行
 
 项目是静态网页，无需构建。使用任意本地 HTTP 服务打开 `dist/`，例如：
