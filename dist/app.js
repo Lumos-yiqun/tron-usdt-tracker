@@ -379,7 +379,9 @@ function openAddressDialog() {
   el("addressDialogError").hidden = true;
   el("addressDialog").hidden = false;
   document.body.classList.add("address-dialog-open");
-  el("addressInput").focus();
+  // Auto-focusing a small input in iOS wallet browsers can zoom the viewport
+  // and show the keyboard before the bottom sheet is fully visible.
+  if (!window.matchMedia?.("(max-width: 640px)").matches) el("addressInput").focus();
 }
 
 function closeAddressDialog() {

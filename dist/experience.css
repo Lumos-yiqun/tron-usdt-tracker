@@ -164,7 +164,7 @@
 .address-dialog-sheet > p { margin: 12px 0 24px; color: #7c8ca1; font-size: .83rem; line-height: 1.55; }
 .address-dialog .address-form { display: flex; flex-direction: column; gap: 8px; width: 100%; min-width: 0; }
 .address-dialog .address-form label { color: #263a54; font-size: .83rem; font-weight: 750; }
-.address-dialog .address-form input { width: 100%; min-height: 46px; padding: 11px 13px; background: #fff; font-size: .88rem; }
+.address-dialog .address-form input { width: 100%; min-height: 46px; padding: 11px 13px; background: #fff; font-size: 16px; }
 .address-dialog .address-form button[type="submit"] { min-height: 46px; margin-top: 10px; font-size: .9rem; }
 .address-dialog-error { margin: 1px 0 0; color: #a74734; font-size: .8rem; line-height: 1.4; }
 body.address-dialog-open { overflow: hidden; }
@@ -212,10 +212,10 @@ body.address-dialog-open { overflow: hidden; }
   .address-status p { font-size: .73rem; }
   .address-trigger,
   .return-wallet-button { min-height: 46px; padding: 12px 16px; font-size: .76rem; }
-  .address-dialog { align-items: end; }
-  .address-dialog-sheet { width: 100%; padding: 11px 22px max(25px, env(safe-area-inset-bottom)); border-radius: 23px 23px 0 0; }
+  .address-dialog { display: flex; align-items: flex-end; justify-content: center; width: 100%; max-width: 100%; }
+  .address-dialog-sheet { width: 100%; max-width: 100%; min-width: 0; padding: 11px 22px max(25px, env(safe-area-inset-bottom)); border-radius: 23px 23px 0 0; }
   .dialog-handle { display: block; width: 38px; height: 4px; margin: 0 auto 23px; border-radius: 8px; background: #dbe3ea; }
-  .address-dialog-sheet > p { margin: 10px 0 23px; font-size: .78rem; }
+  .address-dialog-sheet > p { margin: 10px 0 23px; font-size: .78rem; overflow-wrap: anywhere; }
   .summary-grid.is-loading .summary-card::before { top: 65px; left: 14px; width: 65%; height: 21px; }
   .summary-grid.is-loading .summary-card::after { top: 101px; left: 14px; width: 38%; height: 10px; }
   .report-surface.is-loading::before { top: 111px; left: 19px; }

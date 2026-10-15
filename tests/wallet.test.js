@@ -33,7 +33,7 @@ function createPage(injections = {}) {
           classList: makeClassList(),
           addEventListener(type, handler) { this.listeners[type] = handler; },
           setAttribute(name, value) { this[name] = value; },
-          focus() {},
+          focus() { this.focusCount = (this.focusCount || 0) + 1; },
           append() {},
         });
       }
@@ -117,6 +117,13 @@ test("other-address input opens on demand and validates before closing", async (
   await elements.get("addressForm").listeners.submit({ preventDefault() {} });
   assert.equal(elements.get("addressDialog").hidden, true);
   assert.equal(context.viewed.value, otherAddress);
+});
+
+test("mobile address dialog does not open the keyboard immediately", () => {
+  const { context, elements } = createPage({ matchMedia: (query) => ({ matches: query === "(max-width: 640px)" }) });
+  elements.get("openAddressDialog").listeners.click();
+  assert.equal(elements.get("addressDialog").hidden, false);
+  assert.equal(vm.runInContext('el("addressInput").focusCount || 0', context), 0);
 });
 
 test("fee analysis keeps results in loading state instead of displaying zero", () => {
