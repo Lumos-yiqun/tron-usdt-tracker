@@ -1,0 +1,75 @@
+.address-panel-copy > div {
+  min-width: 0;
+}
+
+.address-mode {
+  color: #0c766c;
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+
+.address-panel h2 {
+  margin-top: 5px;
+}
+
+.active-address {
+  display: block;
+  color: #51637a;
+  font-size: .78rem;
+  margin: 3px 0 6px;
+  overflow-wrap: anywhere;
+}
+
+.active-address[hidden],
+.return-wallet-button[hidden] {
+  display: none;
+}
+
+.address-panel-actions {
+  width: min(500px, 48%);
+  flex: none;
+  min-width: 0;
+}
+
+.address-action-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  color: #51637a;
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.address-panel-actions .address-form {
+  min-width: 0;
+  width: 100%;
+}
+
+.return-wallet-button {
+  border: 0;
+  background: none;
+  color: #0c766c;
+  font-size: .78rem;
+  font-weight: 700;
+  padding: 0;
+  white-space: nowrap;
+}
+
+.return-wallet-button:hover {
+  text-decoration: underline;
+}
+
+.return-wallet-button:focus-visible {
+  outline: 3px solid #28a9b7;
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+
+@media (max-width: 900px) {
+  .address-panel-actions {
+    width: 100%;
+  }
+}

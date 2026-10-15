@@ -2,6 +2,8 @@
 
 一个只读的 TRON-USDT 转账追踪工具。支持连接 imToken 或 TronLink，也可输入地址查看公开链上流水、月度收支和手续费报告。页面适配桌面与移动端。
 
+连接钱包后会自动分析当前钱包地址；首页也可查询其他 TRON 地址。查询其他地址不会切换钱包，可随时返回我的钱包地址。
+
 在线访问：[tron-usdt-tracker.vercel.app](https://tron-usdt-tracker.vercel.app/)。
 
 ## 本地运行

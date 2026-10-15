@@ -7,6 +7,7 @@ const { webcrypto } = require("node:crypto");
 
 const source = fs.readFileSync(path.join(__dirname, "../dist/app.js"), "utf8");
 const address = "TVqciEhqdir53x5fEX8SNf6MuCcaKpKbUc";
+const otherAddress = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 
 function createPage(injections = {}) {
   const elements = new Map();
@@ -17,8 +18,9 @@ function createPage(injections = {}) {
           textContent: "",
           disabled: false,
           hidden: false,
+          listeners: {},
           classList: { toggle() {} },
-          addEventListener() {},
+          addEventListener(type, handler) { this.listeners[type] = handler; },
           append() {},
         });
       }
@@ -35,7 +37,7 @@ function createPage(injections = {}) {
     setTimeout(callback) { callback(); },
   });
   vm.runInContext(source, context);
-  vm.runInContext("viewAddress = async (value, fromWallet) => { globalThis.viewed = { value, fromWallet }; }", context);
+  vm.runInContext("viewAddress = async (value) => { globalThis.viewed = { value }; }", context);
   return { context, elements };
 }
 
@@ -43,7 +45,6 @@ test("imToken injected tronweb connects without a TronLink provider", async () =
   const { context, elements } = createPage({ tronweb: { defaultAddress: { base58: address }, fullNode: { host: "https://api.trongrid.io" } } });
   await vm.runInContext("connectWallet()", context);
   assert.equal(context.viewed.value, address);
-  assert.equal(context.viewed.fromWallet, true);
   assert.match(elements.get("walletButton").textContent, /^已连接 /);
 });
 
@@ -61,4 +62,17 @@ test("missing TRON wallet shows an actionable message", async () => {
   await vm.runInContext("connectWallet()", context);
   assert.match(elements.get("message").textContent, /imToken.*TRON 钱包/);
   assert.equal(elements.get("walletButton").textContent, "连接钱包");
+});
+
+test("connected wallet and another address remain clearly distinguished", async () => {
+  const { context, elements } = createPage();
+  vm.runInContext(`state.walletAddress = "${address}"; state.address = "${otherAddress}"; updateAddressContext()`, context);
+  assert.equal(elements.get("addressTitle").textContent, "正在查看其他地址");
+  assert.equal(elements.get("activeAddress").textContent, otherAddress);
+  assert.equal(elements.get("returnWalletButton").hidden, false);
+  await elements.get("returnWalletButton").listeners.click();
+  assert.equal(context.viewed.value, address);
+  vm.runInContext(`state.address = "${address}"; updateAddressContext()`, context);
+  assert.equal(elements.get("addressTitle").textContent, "正在分析我的钱包地址");
+  assert.equal(elements.get("returnWalletButton").hidden, true);
 });

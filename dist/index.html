@@ -8,6 +8,7 @@
     <title>TRON USDT Tracker</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='15' fill='%230b1426'/%3E%3Cpath d='M16 18h32M16 31h32M16 44h21' stroke='%2347dec0' stroke-width='5' stroke-linecap='round'/%3E%3C/svg%3E" />
     <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./experience.css" />
     <script defer src="./app.js"></script>
   </head>
   <body>
@@ -40,15 +41,22 @@
           <div class="address-panel-copy">
             <span class="panel-icon" aria-hidden="true">⌁</span>
             <div>
-              <h2 id="addressTitle">选择要查看的地址</h2>
-              <p id="addressDescription">连接钱包，或粘贴地址只读查看公开链上记录。</p>
+              <span id="addressMode" class="address-mode">我的钱包</span>
+              <h2 id="addressTitle">连接钱包，自动分析交易</h2>
+              <code id="activeAddress" class="active-address" hidden></code>
+              <p id="addressDescription">点击右上角“连接钱包”，自动查看当前地址的 USDT 流水和月度手续费。</p>
             </div>
           </div>
-          <form id="addressForm" class="address-form">
-            <label class="sr-only" for="addressInput">TRON 地址</label>
-            <input id="addressInput" name="address" type="text" placeholder="粘贴 T 开头的 TRON 地址" autocomplete="off" spellcheck="false" />
-            <button type="submit">查看账本</button>
-          </form>
+          <div class="address-panel-actions">
+            <div class="address-action-header">
+              <label for="addressInput">查询其他地址</label>
+              <button id="returnWalletButton" class="return-wallet-button" type="button" hidden>返回我的钱包地址</button>
+            </div>
+            <form id="addressForm" class="address-form">
+              <input id="addressInput" name="address" type="text" placeholder="粘贴 T 开头的 TRON 地址" autocomplete="off" spellcheck="false" />
+              <button type="submit">查询</button>
+            </form>
+          </div>
         </section>
 
         <div id="message" class="message" role="status" aria-live="polite" hidden></div>

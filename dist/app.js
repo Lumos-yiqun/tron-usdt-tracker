@@ -298,7 +298,37 @@ function renderReport(ids, failed, omitted, energyLoading = false) {
     : "实际手续费为该地址发起交易所燃烧的 TRX。使用已有或受委托 Energy 时，仍会记录资源消耗，但不计为 TRX 支出。";
 }
 
-async function viewAddress(address, fromWallet = false) {
+function updateAddressContext() {
+  const hasAddress = Boolean(state.address);
+  const isOwnWallet = hasAddress && state.address === state.walletAddress;
+  const isOtherAddress = hasAddress && Boolean(state.walletAddress) && !isOwnWallet;
+  const mode = el("addressMode");
+  const title = el("addressTitle");
+  const description = el("addressDescription");
+  const activeAddress = el("activeAddress");
+  if (!hasAddress) {
+    mode.textContent = "我的钱包";
+    title.textContent = "连接钱包，自动分析交易";
+    description.textContent = "点击右上角“连接钱包”，自动查看当前地址的 USDT 流水和月度手续费。";
+  } else if (isOwnWallet) {
+    mode.textContent = "我的钱包";
+    title.textContent = "正在分析我的钱包地址";
+    description.textContent = "已连接钱包 · 当前地址的交易记录与月度手续费将自动更新。";
+  } else if (isOtherAddress) {
+    mode.textContent = "其他地址 · 只读查询";
+    title.textContent = "正在查看其他地址";
+    description.textContent = "当前查看的不是已连接钱包的地址；不会切换你的钱包。";
+  } else {
+    mode.textContent = "其他地址 · 只读查询";
+    title.textContent = "正在查看输入的地址";
+    description.textContent = "连接钱包后，也可以自动分析你自己的地址。";
+  }
+  activeAddress.textContent = hasAddress ? state.address : "";
+  activeAddress.hidden = !hasAddress;
+  el("returnWalletButton").hidden = !isOtherAddress;
+}
+
+async function viewAddress(address) {
   const trimmed = address.trim();
   const hex = await decodeAddress(trimmed);
   const requestId = ++state.requestId;
@@ -308,9 +338,8 @@ async function viewAddress(address, fromWallet = false) {
   state.fees = new Map();
   state.loading = true;
   clearReport();
-  el("addressInput").value = trimmed;
-  el("addressTitle").textContent = short(trimmed);
-  el("addressDescription").textContent = fromWallet ? "已连接钱包 · 只读查看账本，不会请求转账签名" : "只读地址 · 数据来自 TRON 主网";
+  el("addressInput").value = "";
+  updateAddressContext();
   showMessage("正在同步链上流水，请稍候…");
   try {
     const result = await fetchTransfers(trimmed);
@@ -373,7 +402,7 @@ async function connectWallet() {
     state.walletAddress = address;
     button.textContent = `已连接 ${short(address)}`;
     connected = true;
-    await viewAddress(address, true);
+    await viewAddress(address);
   } catch (error) {
     showMessage(error?.code === 4001 ? "你已取消连接钱包。仍可粘贴地址只读查看。" : (error.message || "钱包连接失败，请重试。"), true);
   } finally {
@@ -399,6 +428,10 @@ buildMonths();
 discoverWallet();
 registerWebMCP();
 el("walletButton").addEventListener("click", connectWallet);
+el("returnWalletButton").addEventListener("click", async () => {
+  if (!state.walletAddress) return;
+  try { await viewAddress(state.walletAddress); } catch (error) { showMessage(error.message || "返回钱包地址失败，请重试。", true); }
+});
 el("addressForm").addEventListener("submit", async (event) => {
   event.preventDefault();
   try { await viewAddress(el("addressInput").value); } catch (error) { showMessage(error.message || "地址查询失败。", true); }
