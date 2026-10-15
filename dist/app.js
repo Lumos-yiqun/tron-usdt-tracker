@@ -310,7 +310,7 @@ async function viewAddress(address, fromWallet = false) {
   clearReport();
   el("addressInput").value = trimmed;
   el("addressTitle").textContent = short(trimmed);
-  el("addressDescription").textContent = fromWallet ? "已连接 TronLink · 只读查看账本，不会请求转账签名" : "只读地址 · 数据来自 TRON 主网";
+  el("addressDescription").textContent = fromWallet ? "已连接钱包 · 只读查看账本，不会请求转账签名" : "只读地址 · 数据来自 TRON 主网";
   showMessage("正在同步链上流水，请稍候…");
   try {
     const result = await fetchTransfers(trimmed);
@@ -337,27 +337,48 @@ function discoverWallet() {
   return state.walletProvider;
 }
 
+function injectedTronWeb() {
+  return [window.tronweb, window.tronWeb, window.tron?.tronWeb, window.tronLink?.tronWeb]
+    .find((wallet) => typeof wallet?.defaultAddress?.base58 === "string" && wallet.defaultAddress.base58);
+}
+
 async function connectWallet() {
-  let provider = discoverWallet();
-  if (!provider) {
-    await new Promise((resolve) => setTimeout(resolve, 350));
-    provider = discoverWallet();
-  }
-  if (!provider) {
-    showMessage("未检测到 TronLink。请在 TronLink 浏览器中打开，或粘贴地址只读查看。", true);
-    return;
-  }
+  const button = el("walletButton");
+  if (button.disabled) return;
+  button.disabled = true;
+  button.textContent = "连接中…";
+  showMessage("正在读取钱包地址…");
+  let connected = false;
   try {
-    const accounts = await provider.request({ method: "eth_requestAccounts" });
-    const address = accounts?.[0] || provider.tronWeb?.defaultAddress?.base58;
+    let provider;
+    let tronWeb;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      provider = discoverWallet();
+      tronWeb = injectedTronWeb();
+      if (provider || tronWeb) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (!provider && !tronWeb) throw new Error("未检测到 TRON 钱包。请在 imToken 中切换到 TRON 钱包并从“浏览”页打开本站，或使用 TronLink；也可直接输入地址。");
+    let address = tronWeb?.defaultAddress?.base58;
+    if (provider) {
+      showMessage("请在钱包中确认连接…");
+      const accounts = await provider.request({ method: "eth_requestAccounts" });
+      address = accounts?.[0] || provider.tronWeb?.defaultAddress?.base58 || address;
+      tronWeb = provider.tronWeb || tronWeb;
+    }
     if (!address) throw new Error("钱包未返回地址，请解锁后重试。");
-    const host = String(provider.tronWeb?.fullNode?.host || "").toLowerCase();
-    if (/shasta|nile/.test(host)) throw new Error("请先在 TronLink 中切换到 TRON 主网。");
+    const host = String(tronWeb?.fullNode?.host || "").toLowerCase();
+    if (/shasta|nile/.test(host)) throw new Error("请先在钱包中切换到 TRON 主网。");
+    await decodeAddress(address);
     state.walletAddress = address;
-    el("walletButton").textContent = `已连接 ${short(address)}`;
+    button.textContent = `已连接 ${short(address)}`;
+    connected = true;
     await viewAddress(address, true);
   } catch (error) {
     showMessage(error?.code === 4001 ? "你已取消连接钱包。仍可粘贴地址只读查看。" : (error.message || "钱包连接失败，请重试。"), true);
+  } finally {
+    button.disabled = false;
+    if (!connected) button.textContent = "连接钱包";
   }
 }
 

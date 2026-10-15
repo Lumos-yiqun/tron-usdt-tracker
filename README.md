@@ -1,6 +1,6 @@
 # TRON USDT Tracker
 
-一个只读的 TRON-USDT 转账追踪工具。支持连接 TronLink，或输入地址查看公开链上流水、月度收支和手续费报告。页面适配桌面与移动端。
+一个只读的 TRON-USDT 转账追踪工具。支持连接 imToken 或 TronLink，也可输入地址查看公开链上流水、月度收支和手续费报告。页面适配桌面与移动端。
 
 在线访问：[tron-usdt-tracker.vercel.app](https://tron-usdt-tracker.vercel.app/)。
 
@@ -12,7 +12,7 @@
 python3 -m http.server 8765 --directory dist
 ```
 
-然后访问 `http://localhost:8765/`。钱包连接需在安装了 TronLink 的浏览器或 TronLink 内置浏览器中使用。
+然后访问 `http://localhost:8765/`。在 imToken 中使用时，请先切换到 TRON 钱包，并从 imToken 的“浏览”页打开网站；也可使用安装了 TronLink 的浏览器或 TronLink 内置浏览器。
 
 ## 数据与限制
 
