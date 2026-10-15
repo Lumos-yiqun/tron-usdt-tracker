@@ -1,6 +1,6 @@
-# TRON USDT 记账本
+# TRON USDT Tracker
 
-一个只读的 TRON-USDT 地址账本 MVP。支持连接 TronLink，或输入地址查看公开链上流水、月度收支和手续费报告。页面适配桌面与移动端。
+一个只读的 TRON-USDT 转账追踪工具。支持连接 TronLink，或输入地址查看公开链上流水、月度收支和手续费报告。页面适配桌面与移动端。
 
 ## 本地运行
 
