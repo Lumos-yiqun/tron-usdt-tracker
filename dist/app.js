@@ -2,7 +2,7 @@ const API = "https://api.trongrid.io";
 const USDT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const MAINNET = "0x2b6653dc";
-const state = { address: "", addressHex: "", transfers: [], fees: new Map(), loading: false, truncated: false, walletProvider: null, walletAddress: "", requestId: 0 };
+const state = { address: "", addressHex: "", transfers: [], fees: new Map(), loading: false, truncated: false, walletProvider: null, walletAddress: "", requestId: 0, analysisStage: "idle", lastUpdated: null };
 const el = (id) => document.getElementById(id);
 const formatUSDT = (value) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
 const formatTRX = (value) => new Intl.NumberFormat("zh-CN", { minimumFractionDigits: value > 0 && value < 0.01 ? 4 : 2, maximumFractionDigits: 4 }).format(value);
@@ -23,12 +23,30 @@ function clearReport() {
   el("inCount").textContent = "正在同步";
   el("outCount").textContent = "正在同步";
   el("feeSubtitle").textContent = "等待链上执行数据";
-  el("reportStatus").textContent = "等待数据";
+  el("reportStatus").textContent = "分析中";
   el("reportNote").textContent = "手续费以链上执行数据为准；无法核实的交易不会按 0 计算。";
-  el("ledgerCount").textContent = "0 笔";
+  el("ledgerCount").textContent = "同步中";
   el("ledgerBody").innerHTML = '<tr><td colspan="5" class="table-empty">正在同步链上流水…</td></tr>';
   el("trendChart").classList.add("empty-chart");
   el("trendChart").innerHTML = '<div class="chart-empty">正在同步链上流水…</div>';
+}
+
+function setAnalysisLoading(loading) {
+  for (const id of ["summaryGrid", "reportSurface"]) {
+    el(id).classList.toggle("is-loading", loading);
+    el(id).setAttribute("aria-busy", String(loading));
+  }
+}
+
+function setAnalysisStage(stage) {
+  state.analysisStage = stage;
+  updateAddressContext();
+}
+
+function finishAnalysis(failed, omitted) {
+  state.lastUpdated = new Date();
+  setAnalysisLoading(false);
+  setAnalysisStage((failed + omitted > 0 || selectedMonthIncomplete()) ? "partial" : "complete");
 }
 
 function buildMonths() {
@@ -58,7 +76,9 @@ async function decodeAddress(address) {
 
 async function apiGet(path) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const response = await fetch(`${API}${path}`, { headers: { accept: "application/json" } });
+    let response;
+    try { response = await fetch(`${API}${path}`, { headers: { accept: "application/json" } }); }
+    catch { throw new Error("链上数据暂时无法获取，请检查网络后重试。"); }
     if (response.status === 429 && attempt < 2) {
       await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
       continue;
@@ -72,7 +92,9 @@ async function apiGet(path) {
 
 async function apiPost(path, value) {
   for (let attempt = 0; attempt < 3; attempt++) {
-    const response = await fetch(`${API}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ value }) });
+    let response;
+    try { response = await fetch(`${API}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ value }) }); }
+    catch { throw new Error("交易回执暂时无法获取，请检查网络后重试。"); }
     if (response.status === 429 && attempt < 2) {
       await new Promise((resolve) => setTimeout(resolve, 600 * (attempt + 1)));
       continue;
@@ -203,9 +225,11 @@ async function fetchOutgoingTransactions(address, month) {
 }
 
 async function loadFees(requestId) {
+  setAnalysisLoading(true);
+  setAnalysisStage("fees");
   const outgoing = monthTransfers().filter((row) => row.from === state.address);
   const ids = [...new Set(outgoing.map((row) => row.transaction_id))];
-  if (!ids.length) { renderReport([], 0, 0); return; }
+  if (!ids.length) { renderReport([], 0, 0); finishAnalysis(0, 0); return; }
   el("reportStatus").textContent = "核算中";
   el("feeValue").textContent = "…";
   el("reportFee").textContent = "…";
@@ -214,6 +238,7 @@ async function loadFees(requestId) {
   if (selectedIds.every((id) => state.fees.has(id) && state.fees.get(id).energy !== null)) {
     renderReport(ids, 0, omitted);
     renderLedger(monthTransfers());
+    finishAnalysis(0, omitted);
     return;
   }
   try {
@@ -233,8 +258,10 @@ async function loadFees(requestId) {
       }
     }
     const pending = selectedIds.filter((id) => !state.fees.has(id) || state.fees.get(id).energy === null);
-    renderReport(ids, selectedIds.filter((id) => !state.fees.has(id)).length, omitted, pending.length > 0);
+    const missingFees = selectedIds.filter((id) => !state.fees.has(id)).length;
+    renderReport(ids, missingFees, omitted, pending.length > 0);
     renderLedger(monthTransfers());
+    if (!missingFees) finishAnalysis(0, omitted);
     if (!pending.length) return;
   } catch {
     if (requestId !== state.requestId) return;
@@ -275,6 +302,7 @@ async function hydrateReceipts(ids, selectedIds, omitted, requestId) {
   const failed = selectedIds.filter((id) => !state.fees.has(id)).length;
   renderReport(ids, failed, omitted);
   renderLedger(monthTransfers());
+  finishAnalysis(failed, omitted);
 }
 
 function renderReport(ids, failed, omitted, energyLoading = false) {
@@ -306,26 +334,87 @@ function updateAddressContext() {
   const title = el("addressTitle");
   const description = el("addressDescription");
   const activeAddress = el("activeAddress");
-  if (!hasAddress) {
-    mode.textContent = "我的钱包";
-    title.textContent = "连接钱包，自动分析交易";
-    description.textContent = "点击右上角“连接钱包”，自动查看当前地址的 USDT 流水和月度手续费。";
-  } else if (isOwnWallet) {
-    mode.textContent = "我的钱包";
-    title.textContent = "正在分析我的钱包地址";
-    description.textContent = "已连接钱包 · 当前地址的交易记录与月度手续费将自动更新。";
-  } else if (isOtherAddress) {
-    mode.textContent = "其他地址 · 只读查询";
-    title.textContent = "正在查看其他地址";
-    description.textContent = "当前查看的不是已连接钱包的地址；不会切换你的钱包。";
-  } else {
-    mode.textContent = "其他地址 · 只读查询";
-    title.textContent = "正在查看输入的地址";
-    description.textContent = "连接钱包后，也可以自动分析你自己的地址。";
-  }
+  const status = el("addressStatus");
+  const icon = el("addressStatusIcon");
+  const stage = state.analysisStage;
+  mode.textContent = isOtherAddress ? "其他地址 · 只读查询" : hasAddress && !isOwnWallet ? "当前分析地址 · 只读查询" : "当前分析地址";
   activeAddress.textContent = hasAddress ? state.address : "";
-  activeAddress.hidden = !hasAddress;
+  el("addressLine").hidden = !hasAddress;
   el("returnWalletButton").hidden = !isOtherAddress;
+  status.dataset.stage = stage;
+  icon.className = `status-mark ${stage}`;
+  icon.textContent = stage === "complete" ? "✓" : stage === "partial" || stage === "error" ? "!" : stage === "idle" ? "⌁" : "";
+  if (!hasAddress) {
+    title.textContent = "连接钱包，自动分析交易";
+    description.textContent = "连接钱包后自动查看 USDT 流水和月度手续费。";
+  } else if (stage === "transfers") {
+    title.textContent = "正在获取交易记录";
+    description.textContent = "完成后自动更新本月报告。";
+  } else if (stage === "fees") {
+    title.textContent = "正在核算手续费";
+    description.textContent = "USDT 流水已获取，完成后自动更新本月报告。";
+  } else if (stage === "complete") {
+    const month = Number(el("monthSelect").value.split("-")[1]);
+    title.textContent = `${month} 月账本已更新`;
+    const time = new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" }).format(state.lastUpdated || new Date());
+    description.textContent = `手续费已核算 · 最近更新 ${time}`;
+  } else if (stage === "partial") {
+    title.textContent = "部分数据已更新";
+    description.textContent = "有交易或费用尚未核实，请查看下方报告提示。";
+  } else if (stage === "error") {
+    title.textContent = "分析暂时失败";
+    description.textContent = "链上数据未能载入，请稍后重新查询。";
+  } else {
+    title.textContent = "准备分析这个地址";
+    description.textContent = "即将读取公开链上交易记录。";
+  }
+}
+
+function openAddressDialog() {
+  el("addressDialogError").textContent = "";
+  el("addressDialogError").hidden = true;
+  el("addressDialog").hidden = false;
+  document.body.classList.add("address-dialog-open");
+  el("addressInput").focus();
+}
+
+function closeAddressDialog() {
+  el("addressDialog").hidden = true;
+  document.body.classList.remove("address-dialog-open");
+  el("openAddressDialog").focus();
+}
+
+async function copyAddress() {
+  if (!state.address) return;
+  try {
+    let copied = false;
+    if (navigator.clipboard?.writeText) {
+      try { await navigator.clipboard.writeText(state.address); copied = true; }
+      catch { /* Some wallet browsers deny Clipboard API; try the selection fallback. */ }
+    }
+    if (!copied) {
+      const helper = document.createElement("textarea");
+      helper.value = state.address;
+      helper.style.position = "fixed";
+      helper.style.opacity = "0";
+      document.body.append(helper);
+      helper.select();
+      copied = document.execCommand("copy");
+      helper.remove();
+      if (!copied) throw new Error("复制失败");
+    }
+    const button = el("copyAddressButton");
+    button.classList.add("copied");
+    button.setAttribute("aria-label", "已复制");
+    button.title = "已复制";
+    setTimeout(() => {
+      button.classList.remove("copied");
+      button.setAttribute("aria-label", "复制地址");
+      button.title = "复制地址";
+    }, 1600);
+  } catch {
+    showMessage("复制失败，请长按地址选择复制。", true);
+  }
 }
 
 async function viewAddress(address) {
@@ -337,10 +426,13 @@ async function viewAddress(address) {
   state.transfers = [];
   state.fees = new Map();
   state.loading = true;
+  state.truncated = false;
+  state.lastUpdated = null;
   clearReport();
+  setAnalysisLoading(true);
   el("addressInput").value = "";
-  updateAddressContext();
-  showMessage("正在同步链上流水，请稍候…");
+  setAnalysisStage("transfers");
+  showMessage("");
   try {
     const result = await fetchTransfers(trimmed);
     if (requestId !== state.requestId) return;
@@ -353,7 +445,14 @@ async function viewAddress(address) {
   } catch (error) {
     if (requestId !== state.requestId) return;
     state.loading = false;
+    setAnalysisLoading(false);
+    setAnalysisStage("error");
+    el("inCount").textContent = "数据未载入";
+    el("outCount").textContent = "数据未载入";
+    el("ledgerCount").textContent = "未载入";
+    el("reportStatus").textContent = "加载失败";
     el("ledgerBody").innerHTML = '<tr><td colspan="5" class="table-empty">链上数据暂时无法获取，请稍后重试</td></tr>';
+    el("trendChart").innerHTML = '<div class="chart-empty">链上数据暂时无法获取</div>';
     showMessage(error.message || "加载失败，请稍后重试。", true);
     throw error;
   }
@@ -387,7 +486,7 @@ async function connectWallet() {
       if (provider || tronWeb) break;
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
-    if (!provider && !tronWeb) throw new Error("未检测到 TRON 钱包。请在 imToken 中切换到 TRON 钱包并从“浏览”页打开本站，或使用 TronLink；也可直接输入地址。");
+    if (!provider && !tronWeb) throw new Error("未检测到 TRON 钱包。请在 imToken 中切换到 TRON 钱包并从“浏览”页打开本站，或使用 TronLink；也可点“分析其他地址”手动查询。");
     let address = tronWeb?.defaultAddress?.base58;
     if (provider) {
       showMessage("请在钱包中确认连接…");
@@ -400,14 +499,18 @@ async function connectWallet() {
     if (/shasta|nile/.test(host)) throw new Error("请先在钱包中切换到 TRON 主网。");
     await decodeAddress(address);
     state.walletAddress = address;
-    button.textContent = `已连接 ${short(address)}`;
+    button.textContent = "已连接";
+    button.classList.add("connected");
     connected = true;
     await viewAddress(address);
   } catch (error) {
-    showMessage(error?.code === 4001 ? "你已取消连接钱包。仍可粘贴地址只读查看。" : (error.message || "钱包连接失败，请重试。"), true);
+    showMessage(error?.code === 4001 ? "你已取消连接钱包。仍可点“分析其他地址”只读查看。" : (error.message || "钱包连接失败，请重试。"), true);
   } finally {
     button.disabled = false;
-    if (!connected) button.textContent = "连接钱包";
+    if (!connected) {
+      button.textContent = state.walletAddress ? "已连接" : "连接钱包";
+      button.classList.toggle("connected", Boolean(state.walletAddress));
+    }
   }
 }
 
@@ -428,13 +531,28 @@ buildMonths();
 discoverWallet();
 registerWebMCP();
 el("walletButton").addEventListener("click", connectWallet);
+el("openAddressDialog").addEventListener("click", openAddressDialog);
+el("closeAddressDialog").addEventListener("click", closeAddressDialog);
+el("addressDialogBackdrop").addEventListener("click", closeAddressDialog);
+el("copyAddressButton").addEventListener("click", copyAddress);
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !el("addressDialog").hidden) closeAddressDialog();
+});
 el("returnWalletButton").addEventListener("click", async () => {
   if (!state.walletAddress) return;
   try { await viewAddress(state.walletAddress); } catch (error) { showMessage(error.message || "返回钱包地址失败，请重试。", true); }
 });
 el("addressForm").addEventListener("submit", async (event) => {
   event.preventDefault();
-  try { await viewAddress(el("addressInput").value); } catch (error) { showMessage(error.message || "地址查询失败。", true); }
+  const address = el("addressInput").value.trim();
+  try { await decodeAddress(address); }
+  catch (error) {
+    el("addressDialogError").textContent = error.message || "地址格式不正确。";
+    el("addressDialogError").hidden = false;
+    return;
+  }
+  closeAddressDialog();
+  try { await viewAddress(address); } catch (error) { showMessage(error.message || "地址查询失败。", true); }
 });
 el("monthSelect").addEventListener("change", async () => {
   if (!state.address || state.loading) return;

@@ -39,29 +39,42 @@
 
         <section class="address-panel" aria-labelledby="addressTitle">
           <div class="address-panel-copy">
-            <span class="panel-icon" aria-hidden="true">⌁</span>
-            <div>
-              <span id="addressMode" class="address-mode">我的钱包</span>
-              <h2 id="addressTitle">连接钱包，自动分析交易</h2>
-              <code id="activeAddress" class="active-address" hidden></code>
-              <p id="addressDescription">点击右上角“连接钱包”，自动查看当前地址的 USDT 流水和月度手续费。</p>
+            <span id="addressMode" class="address-mode">当前分析地址</span>
+            <div id="addressLine" class="address-line" hidden>
+              <code id="activeAddress" class="active-address"></code>
+              <button id="copyAddressButton" class="copy-address-button" type="button" aria-label="复制地址" title="复制地址">
+                <svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="6" y="5" width="10" height="12" rx="2" stroke="currentColor" stroke-width="1.7"/><path d="M4 13H3.5A1.5 1.5 0 0 1 2 11.5v-8A1.5 1.5 0 0 1 3.5 2h8A1.5 1.5 0 0 1 13 3.5V4" stroke="currentColor" stroke-width="1.7"/></svg>
+              </button>
+            </div>
+            <div id="addressStatus" class="address-status" data-stage="idle">
+              <span id="addressStatusIcon" class="status-mark idle" aria-hidden="true">⌁</span>
+              <div><h2 id="addressTitle">连接钱包，自动分析交易</h2><p id="addressDescription">连接钱包后自动查看 USDT 流水和月度手续费。</p></div>
             </div>
           </div>
           <div class="address-panel-actions">
-            <div class="address-action-header">
-              <label for="addressInput">查询其他地址</label>
-              <button id="returnWalletButton" class="return-wallet-button" type="button" hidden>返回我的钱包地址</button>
-            </div>
-            <form id="addressForm" class="address-form">
-              <input id="addressInput" name="address" type="text" placeholder="粘贴 T 开头的 TRON 地址" autocomplete="off" spellcheck="false" />
-              <button type="submit">查询</button>
-            </form>
+            <button id="openAddressDialog" class="address-trigger" type="button" aria-haspopup="dialog" aria-controls="addressDialog">分析其他地址 <span aria-hidden="true">›</span></button>
+            <button id="returnWalletButton" class="return-wallet-button" type="button" hidden>返回我的钱包地址 <span aria-hidden="true">›</span></button>
           </div>
         </section>
 
+        <div id="addressDialog" class="address-dialog" hidden>
+          <div id="addressDialogBackdrop" class="address-dialog-backdrop"></div>
+          <div class="address-dialog-sheet" role="dialog" aria-modal="true" aria-labelledby="addressDialogTitle" aria-describedby="addressDialogDescription">
+            <div class="dialog-handle" aria-hidden="true"></div>
+            <div class="dialog-heading"><h2 id="addressDialogTitle">分析其他地址</h2><button id="closeAddressDialog" class="dialog-close" type="button" aria-label="关闭">×</button></div>
+            <p id="addressDialogDescription">输入 TRON 地址查看公开链上记录。不会切换或断开已连接的钱包。</p>
+            <form id="addressForm" class="address-form">
+              <label for="addressInput">TRON 地址</label>
+              <input id="addressInput" name="address" type="text" inputmode="text" placeholder="粘贴 T 开头的地址" autocomplete="off" spellcheck="false" />
+              <p id="addressDialogError" class="address-dialog-error" role="alert" hidden></p>
+              <button type="submit">开始分析</button>
+            </form>
+          </div>
+        </div>
+
         <div id="message" class="message" role="status" aria-live="polite" hidden></div>
 
-        <section class="summary-grid" aria-label="月度概览">
+        <section id="summaryGrid" class="summary-grid" aria-label="月度概览">
           <article class="summary-card in-card">
             <div class="card-top"><span>本月转入</span><span class="mini-icon in" aria-hidden="true">↙</span></div>
             <div class="metric"><span id="inValue">—</span><small>USDT</small></div>
@@ -80,7 +93,7 @@
         </section>
 
         <section class="content-grid">
-          <article class="surface report-surface" aria-labelledby="reportTitle">
+          <article id="reportSurface" class="surface report-surface" aria-labelledby="reportTitle">
             <div class="section-title-row">
               <div><span class="section-kicker">月度报告</span><h2 id="reportTitle">手续费分析</h2></div>
               <span id="reportStatus" class="subtle-tag">等待数据</span>
