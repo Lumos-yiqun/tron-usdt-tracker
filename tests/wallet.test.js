@@ -49,6 +49,7 @@ function createPage(injections = {}) {
     Event: class Event {},
     crypto: webcrypto,
     navigator: injections.navigator || {},
+    URLSearchParams,
     setTimeout(callback) { callback(); },
   });
   vm.runInContext(source, context);
@@ -126,4 +127,44 @@ test("fee analysis keeps results in loading state instead of displaying zero", (
   assert.equal(elements.get("ledgerCount").textContent, "同步中");
   assert.equal(elements.get("summaryGrid").classList.contains("is-loading"), true);
   assert.equal(elements.get("reportSurface").classList.contains("is-loading"), true);
+});
+
+test("transfer history stops after six 200-item pages and marks older data incomplete", async () => {
+  const { context } = createPage();
+  const result = await vm.runInContext(`
+    globalThis.pageCalls = 0;
+    apiGet = async () => {
+      pageCalls++;
+      return {
+        data: Array.from({ length: 200 }, () => ({ type: "Transfer", token_info: { address: USDT }, block_timestamp: Date.now() })),
+        meta: { fingerprint: "next-page" }
+      };
+    };
+    fetchTransfers("${address}");
+  `, context);
+  assert.equal(context.pageCalls, 6);
+  assert.equal(result.transfers.length, 1200);
+  assert.equal(result.truncated, true);
+});
+
+test("fee report caps verification at 200 outgoing transactions", async () => {
+  const { context, elements } = createPage();
+  const timestamp = new Date();
+  const month = `${timestamp.getFullYear()}-${String(timestamp.getMonth() + 1).padStart(2, "0")}`;
+  const rows = Array.from({ length: 250 }, (_, index) => ({
+    from: address,
+    to: otherAddress,
+    value: "1000000",
+    block_timestamp: timestamp.getTime(),
+    transaction_id: index.toString(16).padStart(64, "0"),
+  }));
+  elements.get("monthSelect").value = month;
+  vm.runInContext(`
+    state.address = "${address}";
+    state.transfers = ${JSON.stringify(rows)};
+    state.fees = new Map(state.transfers.slice(0, 200).map((row) => [row.transaction_id, { paidByAddress: true, trx: 1, energy: 0 }]));
+  `, context);
+  await vm.runInContext("loadFees(0)", context);
+  assert.equal(elements.get("reportStatus").textContent, "部分数据");
+  assert.match(elements.get("feeSubtitle").textContent, /50 笔费用尚未核实/);
 });

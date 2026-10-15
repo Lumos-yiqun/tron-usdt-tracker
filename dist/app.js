@@ -1,5 +1,9 @@
 const API = "https://api.trongrid.io";
 const USDT = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
+const API_PAGE_SIZE = 200;
+const TRANSFER_PAGE_LIMIT = 6;
+const OUTGOING_PAGE_LIMIT = 4;
+const MONTHLY_FEE_LIMIT = 200;
 const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const MAINNET = "0x2b6653dc";
 const state = { address: "", addressHex: "", transfers: [], fees: new Map(), loading: false, truncated: false, walletProvider: null, walletAddress: "", requestId: 0, analysisStage: "idle", lastUpdated: null };
@@ -111,8 +115,8 @@ async function fetchTransfers(address) {
   let fingerprint = "";
   const transfers = [];
   let truncated = false;
-  for (let page = 0; page < 4; page++) {
-    const params = new URLSearchParams({ only_confirmed: "true", limit: "200", contract_address: USDT });
+  for (let page = 0; page < TRANSFER_PAGE_LIMIT; page++) {
+    const params = new URLSearchParams({ only_confirmed: "true", limit: String(API_PAGE_SIZE), contract_address: USDT });
     if (fingerprint) params.set("fingerprint", fingerprint);
     const result = await apiGet(`/v1/accounts/${encodeURIComponent(address)}/transactions/trc20?${params}`);
     const rows = Array.isArray(result.data) ? result.data : [];
@@ -120,8 +124,8 @@ async function fetchTransfers(address) {
       if (row.type !== "Transfer" || row.token_info?.address !== USDT) continue;
       if (row.block_timestamp >= earliest.getTime()) transfers.push(row);
     }
-    if (rows.length < 200 || !result.meta?.fingerprint || (rows.length && rows[rows.length - 1].block_timestamp < earliest.getTime())) break;
-    if (page === 3) truncated = true;
+    if (rows.length < API_PAGE_SIZE || !result.meta?.fingerprint || (rows.length && rows[rows.length - 1].block_timestamp < earliest.getTime())) break;
+    if (page === TRANSFER_PAGE_LIMIT - 1) truncated = true;
     fingerprint = result.meta.fingerprint;
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
@@ -212,13 +216,13 @@ async function fetchOutgoingTransactions(address, month) {
   const end = new Date(year, monthNumber, 1).getTime() - 1;
   const transactions = new Map();
   let fingerprint = "";
-  for (let page = 0; page < 4; page++) {
-    const params = new URLSearchParams({ only_confirmed: "true", only_from: "true", limit: "200", min_timestamp: String(start), max_timestamp: String(end) });
+  for (let page = 0; page < OUTGOING_PAGE_LIMIT; page++) {
+    const params = new URLSearchParams({ only_confirmed: "true", only_from: "true", limit: String(API_PAGE_SIZE), min_timestamp: String(start), max_timestamp: String(end) });
     if (fingerprint) params.set("fingerprint", fingerprint);
     const result = await apiGet(`/v1/accounts/${encodeURIComponent(address)}/transactions?${params}`);
     const rows = Array.isArray(result.data) ? result.data : [];
     for (const row of rows) if (row.txID) transactions.set(row.txID, row);
-    if (rows.length < 200 || !result.meta?.fingerprint) return { transactions, complete: true };
+    if (rows.length < API_PAGE_SIZE || !result.meta?.fingerprint) return { transactions, complete: true };
     fingerprint = result.meta.fingerprint;
   }
   return { transactions, complete: false };
@@ -233,7 +237,7 @@ async function loadFees(requestId) {
   el("reportStatus").textContent = "核算中";
   el("feeValue").textContent = "…";
   el("reportFee").textContent = "…";
-  const selectedIds = ids.slice(0, 120);
+  const selectedIds = ids.slice(0, MONTHLY_FEE_LIMIT);
   const omitted = Math.max(0, ids.length - selectedIds.length);
   if (selectedIds.every((id) => state.fees.has(id) && state.fees.get(id).energy !== null)) {
     renderReport(ids, 0, omitted);
@@ -440,7 +444,7 @@ async function viewAddress(address) {
     state.truncated = result.truncated;
     state.loading = false;
     renderSummary();
-    showMessage(result.truncated ? "该地址交易较多，仅载入最近 800 笔。较早月份的统计可能不完整。" : "");
+    showMessage(result.truncated ? `该地址交易较多，仅载入最近 ${TRANSFER_PAGE_LIMIT * API_PAGE_SIZE} 笔。较早月份的统计可能不完整。` : "");
     await loadFees(requestId);
   } catch (error) {
     if (requestId !== state.requestId) return;
