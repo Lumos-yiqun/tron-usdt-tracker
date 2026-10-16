@@ -202,6 +202,7 @@ body.address-dialog-open { overflow: hidden; }
 }
 
 @media (max-width: 640px) {
+  .month-control select { font-size: 16px; }
   .wallet-button.connected { max-width: none; }
   .address-panel-copy { padding: 17px 16px 16px; }
   .active-address { font-size: .76rem; }
