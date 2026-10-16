@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { webcrypto } = require("node:crypto");
-const { quoteFromConfig } = require("../api/energy-quote.js");
+const { quoteFromConfig, usdPriceFromResponse } = require("../api/energy-quote.js");
 
 const source = fs.readFileSync(path.join(__dirname, "../dist/app.js"), "utf8");
 const markup = fs.readFileSync(path.join(__dirname, "../dist/index.html"), "utf8");
@@ -162,6 +162,15 @@ test("rental quote uses Feee's current ten-minute rate and small-order fee", () 
   assert.throws(() => quoteFromConfig({ code: 0, data: {} }), /Invalid rental pricing/);
 });
 
+test("USD market estimate rejects missing, invalid and stale prices", () => {
+  const now = Date.now();
+  const fresh = { tron: { usd: 0.33, last_updated_at: Math.floor(now / 1000) } };
+  assert.equal(usdPriceFromResponse(fresh, now).trxPrice, 0.33);
+  assert.equal(usdPriceFromResponse({}, now), null);
+  assert.equal(usdPriceFromResponse({ tron: { usd: -1, last_updated_at: now / 1000 } }, now), null);
+  assert.equal(usdPriceFromResponse({ tron: { usd: 0.33, last_updated_at: (now - 16 * 60 * 1000) / 1000 } }, now), null);
+});
+
 test("savings prompt appears only when paid Energy burn exceeds comparable rental cost", () => {
   const { context, elements } = createPage();
   vm.runInContext(`
@@ -176,6 +185,16 @@ test("savings prompt appears only when paid Energy burn exceeds comparable renta
   assert.equal(elements.get("rentalSavingPercent").textContent, "约省 26%");
   assert.equal(elements.get("rentalActualCost").textContent, "6.44 TRX");
   assert.equal(elements.get("rentalReferenceCost").textContent, "4.746 TRX");
+  assert.equal(elements.get("rentalSavingCurrency").textContent, "TRX");
+  assert.equal(elements.get("rentalSavingFiatDetail").hidden, true);
+  vm.runInContext(`state.rentalQuote.fiat = { currency: "USD", trxPrice: 0.33, asOf: new Date().toISOString(), source: "CoinGecko" }; renderRentalPrompt(["tx-1", "tx-2"])`, context);
+  assert.equal(elements.get("rentalSavingValue").textContent, "约 $0.56");
+  assert.equal(elements.get("rentalSavingCurrency").textContent, "USD");
+  assert.match(elements.get("rentalSavingEquivalent").textContent, /1\.694 TRX/);
+  assert.equal(elements.get("rentalSavingFiatDetail").hidden, false);
+  vm.runInContext(`state.rentalQuote.fiat.asOf = "2020-01-01T00:00:00.000Z"; renderRentalPrompt(["tx-1"])`, context);
+  assert.equal(elements.get("rentalSavingValue").textContent, "1.694");
+  assert.equal(elements.get("rentalSavingFiatDetail").hidden, true);
   vm.runInContext(`state.fees.get("tx-1").breakdown.energyFee = 4; renderRentalPrompt(["tx-1", "tx-2"])`, context);
   assert.equal(elements.get("rentalPrompt").hidden, true);
   vm.runInContext(`state.fees.get("tx-1").breakdown.energyFee = 6.44; state.fees.get("tx-1").energyUsage = null; renderRentalPrompt(["tx-1"])`, context);

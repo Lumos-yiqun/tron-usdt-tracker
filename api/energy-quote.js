@@ -1,5 +1,14 @@
 const SOURCE = "https://feee.io/v1/init/config";
+const USD_SOURCE = "https://api.coingecko.com/api/v3/simple/price?ids=tron&vs_currencies=usd&include_last_updated_at=true";
 const TIERS = [64400, 130400];
+
+function usdPriceFromResponse(data, now = Date.now()) {
+  const price = data?.tron?.usd;
+  const updatedAt = data?.tron?.last_updated_at;
+  if (typeof price !== "number" || !Number.isFinite(price) || price <= 0 ||
+      typeof updatedAt !== "number" || !Number.isFinite(updatedAt) || Math.abs(now - updatedAt * 1000) > 15 * 60 * 1000) return null;
+  return { currency: "USD", trxPrice: price, asOf: new Date(updatedAt * 1000).toISOString(), source: "CoinGecko" };
+}
 
 function quoteFromConfig(config) {
   const data = config?.data;
@@ -38,9 +47,19 @@ async function handler(req, res) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 5000);
   try {
-    const response = await fetch(SOURCE, { headers: { accept: "application/json" }, signal: controller.signal });
-    if (!response.ok) throw new Error("Rental source unavailable");
-    const quote = quoteFromConfig(await response.json());
+    const getJSON = async (url, headers) => {
+      const response = await fetch(url, { headers: { accept: "application/json", ...headers }, signal: controller.signal });
+      if (!response.ok) throw new Error("Price source unavailable");
+      return response.json();
+    };
+    const [rentalResult, fiatResult] = await Promise.allSettled([
+      getJSON(SOURCE),
+      getJSON(USD_SOURCE, process.env.COINGECKO_DEMO_API_KEY ? { "x-cg-demo-api-key": process.env.COINGECKO_DEMO_API_KEY } : {}),
+    ]);
+    if (rentalResult.status !== "fulfilled") throw new Error("Rental source unavailable");
+    const quote = quoteFromConfig(rentalResult.value);
+    const fiat = fiatResult.status === "fulfilled" ? usdPriceFromResponse(fiatResult.value) : null;
+    if (fiat) quote.fiat = fiat;
     res.setHeader("Cache-Control", "public, s-maxage=120, stale-while-revalidate=60");
     res.statusCode = 200;
     res.end(JSON.stringify(quote));
@@ -55,3 +74,4 @@ async function handler(req, res) {
 
 module.exports = handler;
 module.exports.quoteFromConfig = quoteFromConfig;
+module.exports.usdPriceFromResponse = usdPriceFromResponse;

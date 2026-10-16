@@ -285,8 +285,18 @@ function renderRentalPrompt(ids) {
   if (!count) return;
   const savings = burned - rental;
   const percent = Math.min(99, Math.floor(savings / burned * 100));
+  const fiat = quote.fiat;
+  const hasFiat = fiat?.currency === "USD" && fiat.source === "CoinGecko" && Number.isFinite(fiat.trxPrice) && fiat.trxPrice > 0 &&
+    Number.isFinite(Date.parse(fiat.asOf)) && Math.abs(Date.now() - Date.parse(fiat.asOf)) <= 15 * 60 * 1000;
   el("rentalPromptTitle").textContent = `这 ${count} 笔转出，预计可省`;
-  el("rentalSavingValue").textContent = formatTRX(savings);
+  const usd = hasFiat ? savings * fiat.trxPrice : 0;
+  el("rentalSavingValue").textContent = hasFiat
+    ? usd < 0.01 ? "< $0.01" : `约 $${new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(usd)}`
+    : formatTRX(savings);
+  el("rentalSavingCurrency").textContent = hasFiat ? "USD" : "TRX";
+  el("rentalSavingFiatDetail").hidden = !hasFiat;
+  el("rentalSavingEquivalent").textContent = hasFiat ? `${formatTRX(savings)} TRX · 按当前市价折算` : "";
+  if (hasFiat) el("rentalSavingFiatDetail").title = `1 TRX ≈ ${fiat.trxPrice} USD · ${new Date(fiat.asOf).toLocaleString("zh-CN")}`;
   el("rentalSavingPercent").textContent = percent > 0 ? `约省 ${percent}%` : "有机会省费";
   el("rentalActualCost").textContent = `${formatTRX(burned)} TRX`;
   el("rentalReferenceCost").textContent = `${formatTRX(rental)} TRX`;

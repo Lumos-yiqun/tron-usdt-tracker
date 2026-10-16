@@ -19,6 +19,8 @@
 .rental-saving-amount { display: flex; align-items: baseline; gap: 7px; color: #b54616; }
 .rental-saving-amount strong { min-width: 0; font-size: clamp(1.8rem, 3.2vw, 2.25rem); font-weight: 800; letter-spacing: -.045em; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .rental-saving-amount > span { font-size: .84rem; font-weight: 700; }
+.rental-saving-equivalent { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 7px; margin: 7px 0 0; color: #926e54; font-size: .71rem; line-height: 1.5; font-variant-numeric: tabular-nums; }
+.rental-saving-equivalent a { color: inherit; text-underline-offset: 2px; }
 .rental-cost-comparison { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; margin-top: 15px; padding: 12px 0; border-top: 1px dashed #edcfaf; }
 .rental-cost-comparison div { min-width: 0; }
 .rental-cost-comparison div > span { display: block; margin-bottom: 4px; color: #926e54; font-size: .71rem; }
