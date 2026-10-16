@@ -10,13 +10,25 @@
 .fee-breakdown span { display: block; color: #78899c; font-size: .73rem; margin-bottom: 6px; }
 .fee-breakdown strong { color: #26364b; font-size: 1.06rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .fee-breakdown-status { margin: 8px 0 0; color: #8996a7; font-size: .72rem; line-height: 1.4; }
-.rental-prompt { display: flex; align-items: center; justify-content: space-between; gap: 20px; margin-top: 18px; padding: 17px 18px; border: 1px solid #bde9de; border-radius: 13px; background: #effaf6; }
-.rental-prompt-copy { min-width: 0; }
-.rental-prompt strong { display: block; color: #116e62; font-size: .95rem; line-height: 1.4; }
-.rental-prompt p { margin: 5px 0 4px; color: #274d49; font-size: .82rem; line-height: 1.5; }
-.rental-prompt small { display: block; color: #63817d; font-size: .71rem; line-height: 1.5; }
-.rental-prompt a { flex: 0 0 auto; color: #08796d; font-size: .8rem; font-weight: 700; text-decoration: none; }
-.rental-prompt a:hover { text-decoration: underline; }
+.rental-prompt { margin-top: 18px; padding: 19px 20px 16px; border: 1px solid #f4d8b9; border-radius: 14px; background: linear-gradient(120deg, #fff8ee 0%, #fff1e6 100%); }
+.rental-offer-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.rental-offer-kicker { display: inline-flex; align-items: center; gap: 5px; color: #995025; font-size: .74rem; font-weight: 700; }
+.rental-offer-kicker svg { width: 17px; height: 17px; flex: none; }
+.rental-offer-badge { padding: 4px 9px; border-radius: 6px; background: #fce1c7; color: #994014; font-size: .73rem; font-weight: 750; white-space: nowrap; }
+.rental-prompt h3 { margin: 13px 0 5px; color: #66391f; font-size: .85rem; font-weight: 600; line-height: 1.5; }
+.rental-saving-amount { display: flex; align-items: baseline; gap: 7px; color: #b54616; }
+.rental-saving-amount strong { min-width: 0; font-size: clamp(1.8rem, 3.2vw, 2.25rem); font-weight: 800; letter-spacing: -.045em; line-height: 1.15; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.rental-saving-amount > span { font-size: .84rem; font-weight: 700; }
+.rental-cost-comparison { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px; margin-top: 15px; padding: 12px 0; border-top: 1px dashed #edcfaf; }
+.rental-cost-comparison div { min-width: 0; }
+.rental-cost-comparison div > span { display: block; margin-bottom: 4px; color: #926e54; font-size: .71rem; }
+.rental-cost-comparison strong { display: block; color: #76513a; font-size: .91rem; font-weight: 650; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.rental-cost-comparison div:last-child strong { color: #a73f13; font-weight: 750; }
+.rental-cost-arrow { color: #c58c62; }
+.rental-offer-button { display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 44px; margin-top: 2px; padding: 11px 16px; border-radius: 9px; background: #ad4518; color: #fff; font-size: .85rem; font-weight: 750; text-decoration: none; box-shadow: 0 3px 7px #a2491512; }
+.rental-offer-button:hover { background: #973b13; }
+.rental-offer-button:focus-visible { outline: 3px solid #b95f2b; outline-offset: 3px; }
+.rental-prompt small { display: block; margin-top: 10px; color: #93765e; font-size: .66rem; line-height: 1.55; }
 .report-stats { flex: 0 1 300px; min-width: 235px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
 .report-stats div { min-width: 0; padding-right: 0; }
 .report-stats div+div { padding-left: 18px; }
@@ -230,8 +242,9 @@ body.address-dialog-open { overflow: hidden; }
 }
 
 @media (max-width: 640px) {
-  .rental-prompt { display: block; padding: 15px; }
-  .rental-prompt a { display: inline-block; margin-top: 10px; }
+  .rental-prompt { padding: 17px 15px 14px; }
+  .rental-saving-amount strong { font-size: 2rem; }
+  .rental-cost-comparison { gap: 9px; }
   .report-total { flex-wrap: wrap; align-items: start; gap: 17px; }
   .report-stats { flex: 1 1 100%; min-width: 0; width: 100%; padding-top: 14px; border-top: 1px solid #e9eef3; }
   .month-control select { font-size: 16px; }

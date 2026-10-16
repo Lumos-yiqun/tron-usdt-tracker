@@ -110,12 +110,19 @@
             </div>
             <p id="reportBreakdownStatus" class="fee-breakdown-status">等待费用明细</p>
             <aside id="rentalPrompt" class="rental-prompt" aria-label="节省 Energy 成本建议" hidden>
-              <div class="rental-prompt-copy">
-                <strong id="rentalPromptTitle"></strong>
-                <p id="rentalPromptDetail"></p>
-                <small>按当前 Feee.io 10 分钟公开价估算，仅比较 Energy 费用；下次转账请以 imToken 实际报价与可用条件为准。</small>
+              <div class="rental-offer-header">
+                <span class="rental-offer-kicker"><svg viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M11.5 2 4 11h5l-.5 7L16 9h-5l.5-7Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>转账省钱提醒</span>
+                <span id="rentalSavingPercent" class="rental-offer-badge"></span>
               </div>
-              <a href="https://support.token.im/hc/zh-cn/articles/37848484538137-%E6%B3%A2%E5%9C%BA-USDT-%E8%BD%AC%E8%B4%A6%E6%96%B0%E5%8D%87%E7%BA%A7-%E4%B8%80%E9%94%AE%E7%A7%9F%E8%B5%81%E8%83%BD%E9%87%8F-%E8%BD%BB%E6%9D%BE%E8%BD%AC%E8%B4%A6" target="_blank" rel="noopener noreferrer">了解 imToken 能量租赁 <span aria-hidden="true">↗</span></a>
+              <h3 id="rentalPromptTitle"></h3>
+              <div class="rental-saving-amount"><strong id="rentalSavingValue"></strong><span>TRX</span></div>
+              <div class="rental-cost-comparison" aria-label="相同 Energy 用量的费用对比">
+                <div><span>实际 Energy 支出</span><strong id="rentalActualCost"></strong></div>
+                <span class="rental-cost-arrow" aria-hidden="true">→</span>
+                <div><span>租赁参考成本</span><strong id="rentalReferenceCost"></strong></div>
+              </div>
+              <a class="rental-offer-button" href="https://support.token.im/hc/zh-cn/articles/37848484538137-%E6%B3%A2%E5%9C%BA-USDT-%E8%BD%AC%E8%B4%A6%E6%96%B0%E5%8D%87%E7%BA%A7-%E4%B8%80%E9%94%AE%E7%A7%9F%E8%B5%81%E8%83%BD%E9%87%8F-%E8%BD%BB%E6%9D%BE%E8%BD%AC%E8%B4%A6" target="_blank" rel="noopener noreferrer" aria-label="看看怎么省手续费：imToken 能量租赁教程（新窗口打开）">看看怎么省手续费 <span aria-hidden="true">→</span></a>
+              <small id="rentalPromptDetail">按当前 Feee.io 10 分钟租赁价回算，已含服务费，仅比较 Energy。下次转账以 imToken 实际报价为准。</small>
             </aside>
             <p class="report-note" id="reportNote">连接地址后，按链上执行数据核算实际手续费。使用已有 Energy 的部分不会计为 TRX 支出。</p>
           </article>

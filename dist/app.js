@@ -283,8 +283,13 @@ function renderRentalPrompt(ids) {
     rental += tier.costTrx;
   }
   if (!count) return;
-  el("rentalPromptTitle").textContent = `${count} 笔转出可考虑租赁 Energy`;
-  el("rentalPromptDetail").textContent = `这些交易实际燃烧 ${formatTRX(burned)} TRX；按租赁参考价约 ${formatTRX(rental)} TRX，差额约 ${formatTRX(burned - rental)} TRX。`;
+  const savings = burned - rental;
+  const percent = Math.min(99, Math.floor(savings / burned * 100));
+  el("rentalPromptTitle").textContent = `这 ${count} 笔转出，预计可省`;
+  el("rentalSavingValue").textContent = formatTRX(savings);
+  el("rentalSavingPercent").textContent = percent > 0 ? `约省 ${percent}%` : "有机会省费";
+  el("rentalActualCost").textContent = `${formatTRX(burned)} TRX`;
+  el("rentalReferenceCost").textContent = `${formatTRX(rental)} TRX`;
   prompt.hidden = false;
 }
 

@@ -147,7 +147,7 @@ test("monthly fee total and details appear in one report card", () => {
   assert.doesNotMatch(report, /id="reportEnergy"|消耗 Energy/);
   assert.match(report, /平均每笔手续费/);
   assert.match(report, /class="report-total"[\s\S]*class="report-stats"[\s\S]*class="fee-breakdown"/);
-  assert.match(report, /id="rentalPrompt"[\s\S]*了解 imToken 能量租赁/);
+  assert.match(report, /id="rentalPrompt"[\s\S]*看看怎么省手续费/);
 });
 
 test("rental quote uses Feee's current ten-minute rate and small-order fee", () => {
@@ -171,8 +171,11 @@ test("savings prompt appears only when paid Energy burn exceeds comparable renta
     renderRentalPrompt(["tx-1", "tx-2"]);
   `, context);
   assert.equal(elements.get("rentalPrompt").hidden, false);
-  assert.match(elements.get("rentalPromptTitle").textContent, /1 笔转出/);
-  assert.match(elements.get("rentalPromptDetail").textContent, /6\.44 TRX.*4\.746 TRX.*1\.694 TRX/);
+  assert.match(elements.get("rentalPromptTitle").textContent, /1 笔转出，预计可省/);
+  assert.equal(elements.get("rentalSavingValue").textContent, "1.694");
+  assert.equal(elements.get("rentalSavingPercent").textContent, "约省 26%");
+  assert.equal(elements.get("rentalActualCost").textContent, "6.44 TRX");
+  assert.equal(elements.get("rentalReferenceCost").textContent, "4.746 TRX");
   vm.runInContext(`state.fees.get("tx-1").breakdown.energyFee = 4; renderRentalPrompt(["tx-1", "tx-2"])`, context);
   assert.equal(elements.get("rentalPrompt").hidden, true);
   vm.runInContext(`state.fees.get("tx-1").breakdown.energyFee = 6.44; state.fees.get("tx-1").energyUsage = null; renderRentalPrompt(["tx-1"])`, context);
