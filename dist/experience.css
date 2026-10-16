@@ -1,5 +1,8 @@
 [hidden] { display: none !important; }
 
+.summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.fee-subtitle { margin: 8px 0 0; color: #8794a3; font-size: .78rem; line-height: 1.45; }
+
 .wallet-button.connected {
   background: #1b4b4a;
   border-color: #3baf9c;

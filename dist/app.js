@@ -23,7 +23,7 @@ function showMessage(message, error = false) {
 }
 
 function clearReport() {
-  for (const id of ["inValue", "outValue", "feeValue", "reportFee", "reportTxCount", "reportAverage", "reportEnergy"]) el(id).textContent = "—";
+  for (const id of ["inValue", "outValue", "reportFee", "reportTxCount", "reportAverage", "reportEnergy"]) el(id).textContent = "—";
   el("inCount").textContent = "正在同步";
   el("outCount").textContent = "正在同步";
   el("feeSubtitle").textContent = "等待链上执行数据";
@@ -235,7 +235,6 @@ async function loadFees(requestId) {
   const ids = [...new Set(outgoing.map((row) => row.transaction_id))];
   if (!ids.length) { renderReport([], 0, 0); finishAnalysis(0, 0); return; }
   el("reportStatus").textContent = "核算中";
-  el("feeValue").textContent = "…";
   el("reportFee").textContent = "…";
   const selectedIds = ids.slice(0, MONTHLY_FEE_LIMIT);
   const omitted = Math.max(0, ids.length - selectedIds.length);
@@ -316,7 +315,6 @@ function renderReport(ids, failed, omitted, energyLoading = false) {
   const energy = knownEnergy.reduce((sum, item) => sum + item.energy, 0);
   const unresolved = failed + omitted;
   const incomplete = selectedMonthIncomplete();
-  el("feeValue").textContent = unresolved || incomplete ? `${formatTRX(total)}+` : formatTRX(total);
   el("reportFee").textContent = unresolved || incomplete ? `${formatTRX(total)}+` : formatTRX(total);
   el("reportTxCount").textContent = `${ids.length}${incomplete ? "+" : ""} 笔`;
   el("reportAverage").textContent = known.length ? `${formatTRX(total / known.length)} TRX` : "—";

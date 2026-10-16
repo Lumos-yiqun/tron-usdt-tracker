@@ -6,6 +6,7 @@ const vm = require("node:vm");
 const { webcrypto } = require("node:crypto");
 
 const source = fs.readFileSync(path.join(__dirname, "../dist/app.js"), "utf8");
+const markup = fs.readFileSync(path.join(__dirname, "../dist/index.html"), "utf8");
 const address = "TVqciEhqdir53x5fEX8SNf6MuCcaKpKbUc";
 const otherAddress = "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t";
 
@@ -134,6 +135,14 @@ test("fee analysis keeps results in loading state instead of displaying zero", (
   assert.equal(elements.get("ledgerCount").textContent, "同步中");
   assert.equal(elements.get("summaryGrid").classList.contains("is-loading"), true);
   assert.equal(elements.get("reportSurface").classList.contains("is-loading"), true);
+});
+
+test("monthly fee total and details appear in one report card", () => {
+  const report = markup.split('id="reportSurface"')[1]?.split("</article>")[0] || "";
+  assert.doesNotMatch(markup, /id="feeValue"/);
+  for (const id of ["reportFee", "feeSubtitle", "reportTxCount", "reportAverage", "reportEnergy"]) {
+    assert.match(report, new RegExp(`id="${id}"`));
+  }
 });
 
 test("transfer history stops after six 200-item pages and marks older data incomplete", async () => {

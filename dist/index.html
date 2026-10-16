@@ -74,7 +74,7 @@
 
         <div id="message" class="message" role="status" aria-live="polite" hidden></div>
 
-        <section id="summaryGrid" class="summary-grid" aria-label="月度概览">
+        <section id="summaryGrid" class="summary-grid" aria-label="月度收支概览">
           <article class="summary-card in-card">
             <div class="card-top"><span>本月转入</span><span class="mini-icon in" aria-hidden="true">↙</span></div>
             <div class="metric"><span id="inValue">—</span><small>USDT</small></div>
@@ -85,21 +85,19 @@
             <div class="metric"><span id="outValue">—</span><small>USDT</small></div>
             <p id="outCount">等待选择地址</p>
           </article>
-          <article class="summary-card fee-card">
-            <div class="card-top"><span>本月实际手续费</span><span class="mini-icon fee" aria-hidden="true">◇</span></div>
-            <div class="metric"><span id="feeValue">—</span><small>TRX</small></div>
-            <p id="feeSubtitle">仅统计该地址发起的转出交易</p>
-          </article>
         </section>
 
         <section class="content-grid">
           <article id="reportSurface" class="surface report-surface" aria-labelledby="reportTitle">
             <div class="section-title-row">
-              <div><span class="section-kicker">月度报告</span><h2 id="reportTitle">手续费分析</h2></div>
+              <div><span class="section-kicker">月度报告</span><h2 id="reportTitle">本月实际手续费</h2></div>
               <span id="reportStatus" class="subtle-tag">等待数据</span>
             </div>
             <div class="report-total">
-              <strong id="reportFee">—</strong>
+              <div>
+                <strong id="reportFee">—</strong>
+                <p id="feeSubtitle" class="fee-subtitle">仅统计该地址发起的转出交易</p>
+              </div>
             </div>
             <div class="report-stats">
               <div><span>转出交易</span><strong id="reportTxCount">—</strong></div>
