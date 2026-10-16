@@ -7,6 +7,10 @@
 .fee-breakdown span { display: block; color: #78899c; font-size: .73rem; margin-bottom: 6px; }
 .fee-breakdown strong { color: #26364b; font-size: 1.06rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .fee-breakdown-status { margin: 8px 0 0; color: #8996a7; font-size: .72rem; line-height: 1.4; }
+.report-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 19px; padding-top: 18px; border-top: 1px solid #e9eef3; }
+.report-stats div { min-width: 0; padding-right: 0; }
+.report-stats div+div { padding-left: 18px; }
+.report-stats strong { overflow-wrap: anywhere; }
 .fee-cell-total { display: block; }
 .fee-cell-breakdown { display: block; margin-top: 4px; color: #8996a7; font-size: .67rem; font-weight: 400; white-space: nowrap; }
 
