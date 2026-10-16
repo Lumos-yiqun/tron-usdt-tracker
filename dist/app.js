@@ -4,9 +4,11 @@ const API_PAGE_SIZE = 200;
 const TRANSFER_PAGE_LIMIT = 6;
 const OUTGOING_PAGE_LIMIT = 4;
 const MONTHLY_FEE_LIMIT = 200;
+const RENTAL_QUOTE_TTL = 5 * 60 * 1000;
 const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 const MAINNET = "0x2b6653dc";
-const state = { address: "", addressHex: "", transfers: [], fees: new Map(), loading: false, truncated: false, walletProvider: null, walletAddress: "", requestId: 0, analysisStage: "idle", lastUpdated: null };
+const state = { address: "", addressHex: "", transfers: [], fees: new Map(), rentalQuote: null, rentalQuoteCheckedAt: 0, loading: false, truncated: false, walletProvider: null, walletAddress: "", requestId: 0, analysisStage: "idle", lastUpdated: null };
+let rentalQuotePromise = null;
 const el = (id) => document.getElementById(id);
 const formatUSDT = (value) => new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 }).format(value);
 const formatTRX = (value) => new Intl.NumberFormat("zh-CN", { minimumFractionDigits: value > 0 && value < 0.01 ? 4 : 2, maximumFractionDigits: 4 }).format(value);
@@ -24,6 +26,7 @@ function showMessage(message, error = false) {
 function clearReport() {
   for (const id of ["inValue", "outValue", "reportFee", "reportEnergyFee", "reportNetFee", "reportOtherFee", "reportTxCount", "reportAverage"]) el(id).textContent = "—";
   el("reportOtherFeeItem").hidden = true;
+  el("rentalPrompt").hidden = true;
   el("reportBreakdownStatus").textContent = "等待费用明细";
   el("inCount").textContent = "正在同步";
   el("outCount").textContent = "正在同步";
@@ -217,6 +220,11 @@ function feeBreakdown(source, feeSun) {
   return { energyFee: energySun / 1e6, netFee: netSun / 1e6, otherFee: (feeSun - energySun - netSun) / 1e6 };
 }
 
+function energyUsage(source) {
+  const value = Number(source?.receipt?.energy_usage_total ?? source?.energy_usage_total);
+  return Number.isInteger(value) && value > 0 ? value : null;
+}
+
 async function feeForTransaction(txId) {
   const info = await apiPost("/wallet/gettransactioninfobyid", txId);
   if (info?.id !== txId) throw new Error("交易回执缺失");
@@ -227,7 +235,57 @@ async function feeForTransaction(txId) {
   const owner = String(tx.raw_data?.contract?.[0]?.parameter?.value?.owner_address || "").toLowerCase();
   if (!owner) throw new Error("无法确认手续费支付方");
   const paidByAddress = owner === state.addressHex;
-  return { paidByAddress, trx: paidByAddress ? feeSun / 1e6 : 0, breakdown: paidByAddress ? feeBreakdown(info, feeSun) : { energyFee: 0, netFee: 0, otherFee: 0 } };
+  return { paidByAddress, trx: paidByAddress ? feeSun / 1e6 : 0, breakdown: paidByAddress ? feeBreakdown(info, feeSun) : { energyFee: 0, netFee: 0, otherFee: 0 }, energyUsage: paidByAddress ? energyUsage(info) : null };
+}
+
+async function loadRentalQuote() {
+  if (rentalQuotePromise || Date.now() - state.rentalQuoteCheckedAt < RENTAL_QUOTE_TTL) return;
+  state.rentalQuoteCheckedAt = Date.now();
+  state.rentalQuote = null;
+  rentalQuotePromise = (async () => {
+    try {
+      const response = await fetch("/api/energy-quote", { headers: { accept: "application/json" } });
+      if (!response.ok) throw new Error("Rental quote unavailable");
+      const quote = await response.json();
+      if (quote.provider !== "Feee.io" || quote.durationMinutes !== 10 ||
+          !Number.isFinite(Date.parse(quote.asOf)) || Math.abs(Date.now() - Date.parse(quote.asOf)) > RENTAL_QUOTE_TTL ||
+          !Array.isArray(quote.tiers) || quote.tiers.length !== 2 ||
+          !quote.tiers.every((tier) => Number.isInteger(tier.energy) && tier.energy > 0 && Number.isFinite(tier.costTrx) && tier.costTrx > 0)) {
+        throw new Error("Invalid rental quote");
+      }
+      state.rentalQuote = quote;
+    } catch {
+      state.rentalQuote = null;
+    } finally {
+      rentalQuotePromise = null;
+      if (state.address) renderRentalPrompt([...new Set(monthTransfers().filter((row) => row.from === state.address).map((row) => row.transaction_id))]);
+    }
+  })();
+  await rentalQuotePromise;
+}
+
+function renderRentalPrompt(ids) {
+  const prompt = el("rentalPrompt");
+  prompt.hidden = true;
+  const quote = state.rentalQuote;
+  if (!quote || Date.now() - Date.parse(quote.asOf) > RENTAL_QUOTE_TTL) return;
+  const tiers = quote.tiers.slice().sort((a, b) => a.energy - b.energy);
+  let count = 0;
+  let burned = 0;
+  let rental = 0;
+  for (const id of ids) {
+    const fee = state.fees.get(id);
+    if (!fee?.paidByAddress || !fee.breakdown || !fee.energyUsage || fee.breakdown.energyFee <= 0) continue;
+    const tier = tiers.find((item) => item.energy >= fee.energyUsage);
+    if (!tier || fee.breakdown.energyFee <= tier.costTrx) continue;
+    count++;
+    burned += fee.breakdown.energyFee;
+    rental += tier.costTrx;
+  }
+  if (!count) return;
+  el("rentalPromptTitle").textContent = `${count} 笔转出可考虑租赁 Energy`;
+  el("rentalPromptDetail").textContent = `这些交易实际燃烧 ${formatTRX(burned)} TRX；按租赁参考价约 ${formatTRX(rental)} TRX，差额约 ${formatTRX(burned - rental)} TRX。`;
+  prompt.hidden = false;
 }
 
 async function fetchOutgoingTransactions(address, month) {
@@ -254,6 +312,7 @@ async function loadFees(requestId) {
   const outgoing = monthTransfers().filter((row) => row.from === state.address);
   const ids = [...new Set(outgoing.map((row) => row.transaction_id))];
   if (!ids.length) { renderReport([], 0, 0); finishAnalysis(0, 0); return; }
+  void loadRentalQuote();
   el("reportStatus").textContent = "核算中";
   el("reportFee").textContent = "…";
   const selectedIds = ids.slice(0, MONTHLY_FEE_LIMIT);
@@ -276,7 +335,7 @@ async function loadFees(requestId) {
       const fee = Number(tx?.ret?.[0]?.fee);
       const owner = String(tx?.raw_data?.contract?.[0]?.parameter?.value?.owner_address || "").toLowerCase();
       if (tx && Number.isFinite(fee) && fee >= 0 && owner === state.addressHex) {
-        state.fees.set(id, { paidByAddress: true, trx: fee / 1e6, breakdown: feeBreakdown(tx, fee) });
+        state.fees.set(id, { paidByAddress: true, trx: fee / 1e6, breakdown: feeBreakdown(tx, fee), energyUsage: energyUsage(tx) });
       }
     }
     const pending = selectedIds.filter((id) => !state.fees.has(id) || !state.fees.get(id).breakdown);
@@ -308,7 +367,7 @@ async function hydrateReceipts(ids, selectedIds, omitted, requestId) {
           const info = await apiPost("/wallet/gettransactioninfobyid", id);
           if (info?.id !== id) throw new Error("交易回执缺失");
           const receiptFee = Number(info.fee ?? Math.round(current.trx * 1e6));
-          fee = { ...current, breakdown: feeBreakdown(info, receiptFee) };
+          fee = { ...current, breakdown: feeBreakdown(info, receiptFee), energyUsage: energyUsage(info) ?? current.energyUsage };
         } else fee = await feeForTransaction(id);
         if (requestId !== state.requestId) return;
         state.fees.set(id, fee);
@@ -363,6 +422,7 @@ function renderReport(ids, failed, omitted, breakdownLoading = false) {
     : knownBreakdown.length < known.length
       ? `手续费总额已核算；${breakdownLoading ? "费用构成正在后台核实" : "部分交易的费用构成无法核实"}。`
     : "实际手续费为该地址发起交易所燃烧的 TRX；已持有或受委托的 Energy 消耗不计为 TRX 支出。";
+  renderRentalPrompt(ids);
 }
 
 function updateAddressContext() {

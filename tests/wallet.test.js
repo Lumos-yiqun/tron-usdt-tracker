@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const { webcrypto } = require("node:crypto");
+const { quoteFromConfig } = require("../api/energy-quote.js");
 
 const source = fs.readFileSync(path.join(__dirname, "../dist/app.js"), "utf8");
 const markup = fs.readFileSync(path.join(__dirname, "../dist/index.html"), "utf8");
@@ -146,6 +147,38 @@ test("monthly fee total and details appear in one report card", () => {
   assert.doesNotMatch(report, /id="reportEnergy"|消耗 Energy/);
   assert.match(report, /平均每笔手续费/);
   assert.match(report, /class="report-total"[\s\S]*class="report-stats"[\s\S]*class="fee-breakdown"/);
+  assert.match(report, /id="rentalPrompt"[\s\S]*了解 imToken 能量租赁/);
+});
+
+test("rental quote uses Feee's current ten-minute rate and small-order fee", () => {
+  const quote = quoteFromConfig({ code: 0, data: {
+    price_b2c: { energy: { sun_m: 65, service_amount: 0.56, service_amount_limit: 100000 } },
+    order: { energy_b2c_quick_options: [64400, 130400], time_range_b2c: [600] },
+  } });
+  assert.deepEqual(quote.tiers, [
+    { energy: 64400, costTrx: 4.746 },
+    { energy: 130400, costTrx: 8.476 },
+  ]);
+  assert.throws(() => quoteFromConfig({ code: 0, data: {} }), /Invalid rental pricing/);
+});
+
+test("savings prompt appears only when paid Energy burn exceeds comparable rental cost", () => {
+  const { context, elements } = createPage();
+  vm.runInContext(`
+    state.rentalQuote = { provider: "Feee.io", durationMinutes: 10, asOf: new Date().toISOString(), tiers: [{ energy: 64400, costTrx: 4.746 }, { energy: 130400, costTrx: 8.476 }] };
+    state.fees.set("tx-1", { paidByAddress: true, trx: 6.91, breakdown: { energyFee: 6.44, netFee: 0.47, otherFee: 0 }, energyUsage: 64285 });
+    state.fees.set("tx-2", { paidByAddress: true, trx: 0.345, breakdown: { energyFee: 0, netFee: 0.345, otherFee: 0 }, energyUsage: 130285 });
+    renderRentalPrompt(["tx-1", "tx-2"]);
+  `, context);
+  assert.equal(elements.get("rentalPrompt").hidden, false);
+  assert.match(elements.get("rentalPromptTitle").textContent, /1 笔转出/);
+  assert.match(elements.get("rentalPromptDetail").textContent, /6\.44 TRX.*4\.746 TRX.*1\.694 TRX/);
+  vm.runInContext(`state.fees.get("tx-1").breakdown.energyFee = 4; renderRentalPrompt(["tx-1", "tx-2"])`, context);
+  assert.equal(elements.get("rentalPrompt").hidden, true);
+  vm.runInContext(`state.fees.get("tx-1").breakdown.energyFee = 6.44; state.fees.get("tx-1").energyUsage = null; renderRentalPrompt(["tx-1"])`, context);
+  assert.equal(elements.get("rentalPrompt").hidden, true);
+  vm.runInContext(`state.fees.get("tx-1").energyUsage = 64285; state.rentalQuote.asOf = "2020-01-01T00:00:00.000Z"; renderRentalPrompt(["tx-1"])`, context);
+  assert.equal(elements.get("rentalPrompt").hidden, true);
 });
 
 test("fee components use chain-provided sun values and keep other fees separate", () => {
@@ -187,7 +220,7 @@ test("batch fee components populate the monthly report without receipt requests"
     state.address = "${address}";
     state.addressHex = "41abc";
     state.transfers = [{ from: "${address}", to: "${otherAddress}", value: "1000000", block_timestamp: ${timestamp.getTime()}, transaction_id: "tx-1" }];
-    fetchOutgoingTransactions = async () => ({ complete: true, transactions: new Map([["tx-1", { ret: [{ fee: 350000 }], energy_fee: 340000, net_fee: 10000, raw_data: { contract: [{ parameter: { value: { owner_address: "41abc" } } }] } }]]) });
+    fetchOutgoingTransactions = async () => ({ complete: true, transactions: new Map([["tx-1", { ret: [{ fee: 350000 }], energy_fee: 340000, net_fee: 10000, energy_usage_total: 64285, raw_data: { contract: [{ parameter: { value: { owner_address: "41abc" } } }] } }]]) });
     apiPost = async () => { throw new Error("unexpected receipt request"); };
   `, context);
   await vm.runInContext("loadFees(0)", context);
@@ -195,6 +228,7 @@ test("batch fee components populate the monthly report without receipt requests"
   assert.equal(elements.get("reportNetFee").textContent, "0.01 TRX");
   assert.equal(elements.get("reportStatus").textContent, "已核算");
   assert.match(elements.get("ledgerBody").innerHTML, /Energy 0\.34 · 带宽 0\.01/);
+  assert.equal(vm.runInContext('state.fees.get("tx-1").energyUsage', context), 64285);
 });
 
 test("missing batch components are filled from a receipt", async () => {
