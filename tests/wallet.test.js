@@ -145,6 +145,7 @@ test("monthly fee total and details appear in one report card", () => {
   }
   assert.doesNotMatch(report, /id="reportEnergy"|消耗 Energy/);
   assert.match(report, /平均每笔手续费/);
+  assert.match(report, /class="report-total"[\s\S]*class="report-stats"[\s\S]*class="fee-breakdown"/);
 });
 
 test("fee components use chain-provided sun values and keep other fees separate", () => {
@@ -162,6 +163,8 @@ test("fee components use chain-provided sun values and keep other fees separate"
   assert.equal(elements.get("reportNetFee").textContent, "0.0050 TRX");
   assert.equal(elements.get("reportOtherFee").textContent, "0.0050 TRX");
   assert.equal(elements.get("reportOtherFeeItem").hidden, false);
+  assert.equal(elements.get("feeSubtitle").textContent, "");
+  assert.equal(elements.get("reportBreakdownStatus").textContent, "");
 });
 
 test("unverified components are not inferred from the total fee", () => {

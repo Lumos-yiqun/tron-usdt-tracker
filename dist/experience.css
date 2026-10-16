@@ -2,15 +2,19 @@
 
 .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .fee-subtitle { margin: 8px 0 0; color: #8794a3; font-size: .78rem; line-height: 1.45; }
+.fee-subtitle:empty, .fee-breakdown-status:empty { display: none; }
+.report-total { gap: 18px; }
+.report-total > div:first-child { flex: 1 1 220px; min-width: 0; }
 .fee-breakdown { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 17px; }
 .fee-breakdown > div { min-width: 0; padding: 13px 14px; border: 1px solid #e8eef3; border-radius: 11px; background: #f8fbfc; }
 .fee-breakdown span { display: block; color: #78899c; font-size: .73rem; margin-bottom: 6px; }
 .fee-breakdown strong { color: #26364b; font-size: 1.06rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .fee-breakdown-status { margin: 8px 0 0; color: #8996a7; font-size: .72rem; line-height: 1.4; }
-.report-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 19px; padding-top: 18px; border-top: 1px solid #e9eef3; }
+.report-stats { flex: 0 1 300px; min-width: 235px; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; }
 .report-stats div { min-width: 0; padding-right: 0; }
 .report-stats div+div { padding-left: 18px; }
 .report-stats strong { overflow-wrap: anywhere; }
+.report-stats strong::after { content: none; }
 .fee-cell-total { display: block; }
 .fee-cell-breakdown { display: block; margin-top: 4px; color: #8996a7; font-size: .67rem; font-weight: 400; white-space: nowrap; }
 
@@ -218,6 +222,8 @@ body.address-dialog-open { overflow: hidden; }
 }
 
 @media (max-width: 640px) {
+  .report-total { flex-wrap: wrap; align-items: start; gap: 17px; }
+  .report-stats { flex: 1 1 100%; min-width: 0; width: 100%; padding-top: 14px; border-top: 1px solid #e9eef3; }
   .month-control select { font-size: 16px; }
   .wallet-button.connected { max-width: none; }
   .address-panel-copy { padding: 17px 16px 16px; }

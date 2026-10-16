@@ -355,9 +355,9 @@ function renderReport(ids, failed, omitted, breakdownLoading = false) {
   el("reportOtherFee").textContent = breakdownText(breakdown.otherFee);
   el("reportBreakdownStatus").textContent = knownBreakdown.length < ids.length
     ? `${breakdownLoading ? "明细核算中" : "明细未全部核实"} · 已核实 ${knownBreakdown.length}/${ids.length} 笔，未核实部分不计入费用构成`
-    : omitted || incomplete ? "流水不完整，费用构成为已核实部分" : "按链上回执区分 Energy、带宽及其他费用";
+    : omitted || incomplete ? "流水不完整，费用构成为已核实部分" : "";
   el("reportStatus").textContent = unresolved || incomplete ? "部分数据" : knownBreakdown.length < known.length ? breakdownLoading ? "明细核算中" : "部分明细" : "已核算";
-  el("feeSubtitle").textContent = unresolved ? `${unresolved} 笔费用尚未核实` : `${ids.length} 笔转出交易费用已核算${incomplete ? " · 流水不完整" : ""}`;
+  el("feeSubtitle").textContent = unresolved ? `${unresolved} 笔费用尚未核实` : incomplete ? "该月流水未全部载入" : "";
   el("reportNote").textContent = unresolved || incomplete
     ? `${unresolved ? `有 ${unresolved} 笔费用未取得链上执行数据` : ""}${unresolved && incomplete ? "，且" : ""}${incomplete ? "该月流水未全部载入" : ""}；当前金额仅为已核实部分。`
     : knownBreakdown.length < known.length
