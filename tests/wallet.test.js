@@ -140,9 +140,67 @@ test("fee analysis keeps results in loading state instead of displaying zero", (
 test("monthly fee total and details appear in one report card", () => {
   const report = markup.split('id="reportSurface"')[1]?.split("</article>")[0] || "";
   assert.doesNotMatch(markup, /id="feeValue"/);
-  for (const id of ["reportFee", "feeSubtitle", "reportTxCount", "reportAverage", "reportEnergy"]) {
+  for (const id of ["reportFee", "feeSubtitle", "reportEnergyFee", "reportNetFee", "reportBreakdownStatus", "reportTxCount", "reportAverage", "reportEnergy"]) {
     assert.match(report, new RegExp(`id="${id}"`));
   }
+});
+
+test("fee components use chain-provided sun values and keep other fees separate", () => {
+  const { context, elements } = createPage();
+  const parts = vm.runInContext("feeBreakdown({ energy_fee: 340000, net_fee: 5000 }, 350000)", context);
+  assert.deepEqual(JSON.parse(JSON.stringify(parts)), { energyFee: 0.34, netFee: 0.005, otherFee: 0.005 });
+  assert.equal(vm.runInContext("feeBreakdown({}, 350000)", context), null);
+  assert.deepEqual(JSON.parse(JSON.stringify(vm.runInContext("feeBreakdown({ receipt: {} }, 0)", context))), { energyFee: 0, netFee: 0, otherFee: 0 });
+  vm.runInContext(`
+    state.fees.set("tx-1", { paidByAddress: true, trx: 0.35, energy: 130000, breakdown: feeBreakdown({ energy_fee: 340000, net_fee: 5000 }, 350000) });
+    renderReport(["tx-1"], 0, 0);
+  `, context);
+  assert.equal(elements.get("reportFee").textContent, "0.35");
+  assert.equal(elements.get("reportEnergyFee").textContent, "0.34 TRX");
+  assert.equal(elements.get("reportNetFee").textContent, "0.0050 TRX");
+  assert.equal(elements.get("reportOtherFee").textContent, "0.0050 TRX");
+  assert.equal(elements.get("reportOtherFeeItem").hidden, false);
+});
+
+test("unverified components are not inferred from the total fee", () => {
+  const { context, elements } = createPage();
+  vm.runInContext(`
+    state.fees.set("tx-1", { paidByAddress: true, trx: 0.35, energy: 130000, breakdown: null });
+    renderReport(["tx-1"], 0, 0, true);
+  `, context);
+  assert.equal(elements.get("reportFee").textContent, "0.35");
+  assert.equal(elements.get("reportEnergyFee").textContent, "核算中");
+  assert.match(elements.get("reportBreakdownStatus").textContent, /已核实 0\/1 笔/);
+});
+
+test("batch fee components populate the monthly report without receipt requests", async () => {
+  const { context, elements } = createPage();
+  const timestamp = new Date();
+  const month = `${timestamp.getFullYear()}-${String(timestamp.getMonth() + 1).padStart(2, "0")}`;
+  elements.get("monthSelect").value = month;
+  vm.runInContext(`
+    state.address = "${address}";
+    state.addressHex = "41abc";
+    state.transfers = [{ from: "${address}", to: "${otherAddress}", value: "1000000", block_timestamp: ${timestamp.getTime()}, transaction_id: "tx-1" }];
+    fetchOutgoingTransactions = async () => ({ complete: true, transactions: new Map([["tx-1", { ret: [{ fee: 350000 }], energy_usage_total: 130000, energy_fee: 340000, net_fee: 10000, raw_data: { contract: [{ parameter: { value: { owner_address: "41abc" } } }] } }]]) });
+    apiPost = async () => { throw new Error("unexpected receipt request"); };
+  `, context);
+  await vm.runInContext("loadFees(0)", context);
+  assert.equal(elements.get("reportEnergyFee").textContent, "0.34 TRX");
+  assert.equal(elements.get("reportNetFee").textContent, "0.01 TRX");
+  assert.equal(elements.get("reportStatus").textContent, "已核算");
+  assert.match(elements.get("ledgerBody").innerHTML, /Energy 0\.34 · 带宽 0\.01/);
+});
+
+test("missing batch components are filled from a receipt", async () => {
+  const { context, elements } = createPage();
+  vm.runInContext(`
+    state.fees.set("tx-1", { paidByAddress: true, trx: 0.35, energy: null, breakdown: null });
+    apiPost = async () => ({ id: "tx-1", fee: 350000, receipt: { energy_usage_total: 130000, energy_fee: 340000, net_fee: 10000 } });
+  `, context);
+  await vm.runInContext("hydrateReceipts(['tx-1'], ['tx-1'], 0, 0)", context);
+  assert.equal(elements.get("reportEnergyFee").textContent, "0.34 TRX");
+  assert.equal(elements.get("reportNetFee").textContent, "0.01 TRX");
 });
 
 test("transfer history stops after six 200-item pages and marks older data incomplete", async () => {
@@ -178,7 +236,7 @@ test("fee report caps verification at 200 outgoing transactions", async () => {
   vm.runInContext(`
     state.address = "${address}";
     state.transfers = ${JSON.stringify(rows)};
-    state.fees = new Map(state.transfers.slice(0, 200).map((row) => [row.transaction_id, { paidByAddress: true, trx: 1, energy: 0 }]));
+    state.fees = new Map(state.transfers.slice(0, 200).map((row) => [row.transaction_id, { paidByAddress: true, trx: 1, energy: 0, breakdown: { energyFee: 1, netFee: 0, otherFee: 0 } }]));
   `, context);
   await vm.runInContext("loadFees(0)", context);
   assert.equal(elements.get("reportStatus").textContent, "部分数据");

@@ -99,6 +99,12 @@
                 <p id="feeSubtitle" class="fee-subtitle">仅统计该地址发起的转出交易</p>
               </div>
             </div>
+            <div class="fee-breakdown" aria-label="手续费构成">
+              <div><span>Energy 费用</span><strong id="reportEnergyFee">—</strong></div>
+              <div><span>带宽费用</span><strong id="reportNetFee">—</strong></div>
+              <div id="reportOtherFeeItem" hidden><span>其他链上费用</span><strong id="reportOtherFee">—</strong></div>
+            </div>
+            <p id="reportBreakdownStatus" class="fee-breakdown-status">等待费用明细</p>
             <div class="report-stats">
               <div><span>转出交易</span><strong id="reportTxCount">—</strong></div>
               <div><span>平均每笔</span><strong id="reportAverage">—</strong></div>

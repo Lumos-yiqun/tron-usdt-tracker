@@ -23,7 +23,9 @@ function showMessage(message, error = false) {
 }
 
 function clearReport() {
-  for (const id of ["inValue", "outValue", "reportFee", "reportTxCount", "reportAverage", "reportEnergy"]) el(id).textContent = "—";
+  for (const id of ["inValue", "outValue", "reportFee", "reportEnergyFee", "reportNetFee", "reportOtherFee", "reportTxCount", "reportAverage", "reportEnergy"]) el(id).textContent = "—";
+  el("reportOtherFeeItem").hidden = true;
+  el("reportBreakdownStatus").textContent = "等待费用明细";
   el("inCount").textContent = "正在同步";
   el("outCount").textContent = "正在同步";
   el("feeSubtitle").textContent = "等待链上执行数据";
@@ -189,7 +191,13 @@ function renderLedger(rows) {
     const fee = state.fees.get(row.transaction_id);
     let feeText = "—";
     if (outgoing && fee && !seenFees.has(row.transaction_id)) {
-      feeText = fee.paidByAddress ? `${formatTRX(fee.trx)} TRX` : "他人支付";
+      if (fee.paidByAddress) {
+        const parts = fee.breakdown;
+        const detail = parts
+          ? `Energy ${formatTRX(parts.energyFee)} · 带宽 ${formatTRX(parts.netFee)}${parts.otherFee > 0 ? ` · 其他 ${formatTRX(parts.otherFee)}` : ""}`
+          : "费用构成待核实";
+        feeText = `<span class="fee-cell-total">${formatTRX(fee.trx)} TRX</span><span class="fee-cell-breakdown">${detail}</span>`;
+      } else feeText = "他人支付";
       seenFees.add(row.transaction_id);
     } else if (outgoing && seenFees.has(row.transaction_id)) feeText = "同笔交易";
     const id = /^[0-9a-fA-F]{64}$/.test(row.transaction_id) ? row.transaction_id : "";
@@ -198,16 +206,30 @@ function renderLedger(rows) {
   }).join("");
 }
 
+function feeBreakdown(source, feeSun) {
+  if (!Number.isFinite(feeSun) || feeSun < 0) return null;
+  if (feeSun === 0) return { energyFee: 0, netFee: 0, otherFee: 0 };
+  const energyValue = source?.receipt?.energy_fee ?? source?.energy_fee;
+  const netValue = source?.receipt?.net_fee ?? source?.net_fee;
+  if (energyValue == null && netValue == null && !source?.receipt) return null;
+  const energySun = Number(energyValue ?? 0);
+  const netSun = Number(netValue ?? 0);
+  if (![energySun, netSun].every((value) => Number.isFinite(value) && value >= 0) || energySun + netSun > feeSun) return null;
+  return { energyFee: energySun / 1e6, netFee: netSun / 1e6, otherFee: (feeSun - energySun - netSun) / 1e6 };
+}
+
 async function feeForTransaction(txId) {
   const info = await apiPost("/wallet/gettransactioninfobyid", txId);
-  if (!info?.id) throw new Error("交易回执缺失");
-  const actualFee = Number(info.fee || 0) / 1e6;
+  if (info?.id !== txId) throw new Error("交易回执缺失");
+  const feeSun = Number(info.fee ?? 0);
+  if (!Number.isFinite(feeSun) || feeSun < 0) throw new Error("交易手续费无效");
   const energy = Number(info.receipt?.energy_usage_total || 0);
   const tx = await apiPost("/wallet/gettransactionbyid", txId);
   if (!tx?.txID) throw new Error("交易详情缺失");
   const owner = String(tx.raw_data?.contract?.[0]?.parameter?.value?.owner_address || "").toLowerCase();
   if (!owner) throw new Error("无法确认手续费支付方");
-  return { paidByAddress: owner === state.addressHex, trx: owner === state.addressHex ? actualFee : 0, energy };
+  const paidByAddress = owner === state.addressHex;
+  return { paidByAddress, trx: paidByAddress ? feeSun / 1e6 : 0, energy, breakdown: paidByAddress ? feeBreakdown(info, feeSun) : { energyFee: 0, netFee: 0, otherFee: 0 } };
 }
 
 async function fetchOutgoingTransactions(address, month) {
@@ -238,7 +260,7 @@ async function loadFees(requestId) {
   el("reportFee").textContent = "…";
   const selectedIds = ids.slice(0, MONTHLY_FEE_LIMIT);
   const omitted = Math.max(0, ids.length - selectedIds.length);
-  if (selectedIds.every((id) => state.fees.has(id) && state.fees.get(id).energy !== null)) {
+  if (selectedIds.every((id) => state.fees.has(id) && state.fees.get(id).energy !== null && state.fees.get(id).breakdown)) {
     renderReport(ids, 0, omitted);
     renderLedger(monthTransfers());
     finishAnalysis(0, omitted);
@@ -250,17 +272,17 @@ async function loadFees(requestId) {
     for (const id of selectedIds) {
       const tx = transactions.get(id);
       if (!tx && complete) {
-        state.fees.set(id, { paidByAddress: false, trx: 0, energy: 0 });
+        state.fees.set(id, { paidByAddress: false, trx: 0, energy: 0, breakdown: { energyFee: 0, netFee: 0, otherFee: 0 } });
         continue;
       }
       const fee = Number(tx?.ret?.[0]?.fee);
       const energy = Number(tx?.energy_usage_total);
       const owner = String(tx?.raw_data?.contract?.[0]?.parameter?.value?.owner_address || "").toLowerCase();
       if (tx && Number.isFinite(fee) && fee >= 0 && owner === state.addressHex) {
-        state.fees.set(id, { paidByAddress: true, trx: fee / 1e6, energy: Number.isFinite(energy) && tx.energy_usage_total != null ? energy : null });
+        state.fees.set(id, { paidByAddress: true, trx: fee / 1e6, energy: Number.isFinite(energy) && tx.energy_usage_total != null ? energy : null, breakdown: feeBreakdown(tx, fee) });
       }
     }
-    const pending = selectedIds.filter((id) => !state.fees.has(id) || state.fees.get(id).energy === null);
+    const pending = selectedIds.filter((id) => !state.fees.has(id) || state.fees.get(id).energy === null || !state.fees.get(id).breakdown);
     const missingFees = selectedIds.filter((id) => !state.fees.has(id)).length;
     renderReport(ids, missingFees, omitted, pending.length > 0);
     renderLedger(monthTransfers());
@@ -270,14 +292,15 @@ async function loadFees(requestId) {
     if (requestId !== state.requestId) return;
     el("feeSubtitle").textContent = "批量查询不可用，正在逐笔核算";
   }
-  // The account transaction list contains fees and Energy. Query receipts only
-  // when a batch entry is missing or lacks the fields needed for this report.
+  // The account transaction list often includes fee components. Query receipts
+  // only when a batch entry is missing or lacks fields needed for this report.
   void hydrateReceipts(ids, selectedIds, omitted, requestId);
 }
 
 async function hydrateReceipts(ids, selectedIds, omitted, requestId) {
-  const pendingIds = selectedIds.filter((id) => !state.fees.has(id) || state.fees.get(id).energy === null);
+  const pendingIds = selectedIds.filter((id) => !state.fees.has(id) || state.fees.get(id).energy === null || !state.fees.get(id).breakdown);
   let cursor = 0;
+  let completed = 0;
   const workers = Array.from({ length: Math.min(2, pendingIds.length) }, async () => {
     while (cursor < pendingIds.length) {
       const id = pendingIds[cursor++];
@@ -285,14 +308,19 @@ async function hydrateReceipts(ids, selectedIds, omitted, requestId) {
         const current = state.fees.get(id);
         let fee;
         if (current) {
-          if (current.energy !== null) continue;
           const info = await apiPost("/wallet/gettransactioninfobyid", id);
           if (info?.id !== id) throw new Error("交易回执缺失");
-          fee = { ...current, energy: Number(info.receipt?.energy_usage_total || 0) };
+          const receiptFee = Number(info.fee ?? Math.round(current.trx * 1e6));
+          fee = { ...current, energy: Number(info.receipt?.energy_usage_total || 0), breakdown: feeBreakdown(info, receiptFee) };
         } else fee = await feeForTransaction(id);
         if (requestId !== state.requestId) return;
         state.fees.set(id, fee);
       } catch { /* Keep the fee unknown; retry once after the first pass. */ }
+      completed++;
+      if (requestId === state.requestId && (completed % 10 === 0 || completed === pendingIds.length)) {
+        renderReport(ids, selectedIds.filter((txId) => !state.fees.has(txId)).length, omitted, completed < pendingIds.length);
+        renderLedger(monthTransfers());
+      }
     }
   });
   await Promise.all(workers);
@@ -313,18 +341,33 @@ function renderReport(ids, failed, omitted, energyLoading = false) {
   const total = known.reduce((sum, item) => sum + item.trx, 0);
   const knownEnergy = known.filter((item) => item.energy !== null);
   const energy = knownEnergy.reduce((sum, item) => sum + item.energy, 0);
+  const knownBreakdown = known.filter((item) => item.breakdown);
+  const breakdown = knownBreakdown.reduce((sum, item) => ({
+    energyFee: sum.energyFee + item.breakdown.energyFee,
+    netFee: sum.netFee + item.breakdown.netFee,
+    otherFee: sum.otherFee + item.breakdown.otherFee,
+  }), { energyFee: 0, netFee: 0, otherFee: 0 });
+  const breakdownIncomplete = knownBreakdown.length < ids.length || omitted > 0 || selectedMonthIncomplete();
+  const breakdownText = (value) => knownBreakdown.length || !ids.length ? `${formatTRX(value)}${breakdownIncomplete ? "+" : ""} TRX` : energyLoading ? "核算中" : "—";
   const unresolved = failed + omitted;
   const incomplete = selectedMonthIncomplete();
   el("reportFee").textContent = unresolved || incomplete ? `${formatTRX(total)}+` : formatTRX(total);
   el("reportTxCount").textContent = `${ids.length}${incomplete ? "+" : ""} 笔`;
   el("reportAverage").textContent = known.length ? `${formatTRX(total / known.length)} TRX` : "—";
   el("reportEnergy").textContent = knownEnergy.length ? `${formatInteger(energy)}${knownEnergy.length < known.length ? "+" : ""}` : energyLoading ? "同步中" : "—";
-  el("reportStatus").textContent = unresolved || incomplete ? "部分数据" : knownEnergy.length < known.length ? "费用已核算" : "已核算";
+  el("reportEnergyFee").textContent = breakdownText(breakdown.energyFee);
+  el("reportNetFee").textContent = breakdownText(breakdown.netFee);
+  el("reportOtherFeeItem").hidden = breakdown.otherFee <= 0;
+  el("reportOtherFee").textContent = breakdownText(breakdown.otherFee);
+  el("reportBreakdownStatus").textContent = knownBreakdown.length < ids.length
+    ? `${energyLoading ? "明细核算中" : "明细未全部核实"} · 已核实 ${knownBreakdown.length}/${ids.length} 笔，未核实部分不计入下方金额`
+    : omitted || incomplete ? "流水不完整，费用构成为已核实部分" : "按链上回执区分 Energy、带宽及其他费用";
+  el("reportStatus").textContent = unresolved || incomplete ? "部分数据" : knownEnergy.length < known.length || knownBreakdown.length < known.length ? energyLoading ? "明细核算中" : "部分明细" : "已核算";
   el("feeSubtitle").textContent = unresolved ? `${unresolved} 笔费用尚未核实` : `${ids.length} 笔转出交易费用已核算${incomplete ? " · 流水不完整" : ""}`;
   el("reportNote").textContent = unresolved || incomplete
     ? `${unresolved ? `有 ${unresolved} 笔费用未取得链上执行数据` : ""}${unresolved && incomplete ? "，且" : ""}${incomplete ? "该月流水未全部载入" : ""}；当前金额仅为已核实部分。`
-    : knownEnergy.length < known.length
-      ? `手续费已按地址交易记录核算；Energy ${energyLoading ? "正在后台同步" : "仅取得部分回执"}。`
+    : knownEnergy.length < known.length || knownBreakdown.length < known.length
+      ? `手续费总额已核算；${energyLoading ? "费用构成正在后台核实" : "部分交易的费用构成无法核实"}。`
     : "实际手续费为该地址发起交易所燃烧的 TRX。使用已有或受委托 Energy 时，仍会记录资源消耗，但不计为 TRX 支出。";
 }
 
